@@ -30,7 +30,7 @@ window.addEventListener('resize', () => {
 // --- world + dog ---
 const { planetGroup, clouds, shadow } = buildWorld(scene);
 
-const dog = buildDog();
+let dog = buildDog(localStorage.getItem('fetchrun.breed') || 'gsp');
 const dogPivot = new THREE.Group(); // rotation.z = lateral lane position
 dogPivot.rotation.x = CONFIG.dogTheta; // down the near side of the globe
 // Carrier lifts the dog to the surface; the run-cycle bob animates position.y
@@ -47,6 +47,11 @@ const input = new Input();
 const ui = new UI(input);
 const game = new Game({ planetGroup, dogPivot }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
+ui.onBreedChange = (breedKey) => {
+  dogCarrier.remove(dog.group);
+  dog = buildDog(breedKey);
+  dogCarrier.add(dog.group);
+};
 window.__game = game; // debug/test handle
 
 // --- loop ---
@@ -56,7 +61,7 @@ function frame(now) {
   last = now;
 
   game.update(dt);
-  dog.animate(now / 1000, game.speed, game.state);
+  dog.animate(now / 1000, game.speed, game.state, game.targetLane - game.lane);
   game.spawner.animate(now / 1000);
   for (const c of clouds) c.rotation.x += c.userData.speed * dt;
 

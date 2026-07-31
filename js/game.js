@@ -26,6 +26,7 @@ export class Game {
     this.planetGroup.rotation.x = 0;
     this.distance = 0;
     this.speed = CONFIG.baseSpeed;
+    this.stage = 1;
     this.lane = 2;
     this.targetLane = 2;
     this.spawnTimer = 2.0; // grace period at run start
@@ -73,14 +74,21 @@ export class Game {
 
     this.time += dt;
 
-    // Chill opening, then linear ramp
-    const ramp = Math.max(0, this.time - CONFIG.chillDuration);
-    this.speed = Math.min(CONFIG.maxSpeed, CONFIG.baseSpeed + ramp * CONFIG.rampPerSecond);
-
     const spinBefore = this.spin;
     this.spin += this.speed * dt;
     this.planetGroup.rotation.x = this.spin;
     this.distance = this.spin * CONFIG.metersPerRadian;
+
+    // Stage checkpoints: every stageLength meters the pace steps up
+    const stageNow = 1 + Math.floor(this.distance / CONFIG.stageLength);
+    if (stageNow > this.stage) {
+      this.stage = stageNow;
+      this.ui.showStageBanner(this.stage);
+    }
+    this.speed = Math.min(
+      CONFIG.maxSpeed,
+      CONFIG.baseSpeed + (this.stage - 1) * CONFIG.stageSpeedBump
+    );
 
     // Tween dog toward target lane; lateral position is a rotation on the globe
     const diff = this.targetLane - this.lane;
@@ -112,13 +120,17 @@ export class Game {
           this.ui.updateHUD(this);
           continue;
         }
-      } else if (prev < 0 && cur >= 0) {
-        // Obstacle crossing the dog's line this frame
-        if (laneDist < CONFIG.hitboxForgiveness) {
+      } else {
+        // Continuous hitbox overlap (dog box + obstacle box), checked every
+        // frame — no phasing through obstacles mid-lane-change.
+        const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
+        const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
+        if (Math.abs(cur) < hitAng && laneDist < hitLat) {
           this._die();
           return;
         }
-        if (laneDist < CONFIG.nearMissLaneDist) {
+        // Near-miss still counts at the crossing instant
+        if (prev < 0 && cur >= 0 && laneDist < CONFIG.nearMissLaneDist) {
           this.nearMisses++;
           this.ui.updateHUD(this);
         }

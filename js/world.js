@@ -44,6 +44,20 @@ function makeTree() {
       c2.position.set(0.35, h + r1 * 1.15, 0.1);
       g.add(c2);
     }
+    // Some trees carry little fruit for detail
+    if (Math.random() < 0.45) {
+      const fruitMat = lambert(Math.random() < 0.5 ? 0xd94f4f : 0xf0a030);
+      for (let f = 0; f < 3; f++) {
+        const a = Math.random() * Math.PI * 2;
+        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), fruitMat);
+        fruit.position.set(
+          Math.cos(a) * r1 * 0.85,
+          h + r1 * 0.75 + (Math.random() - 0.3) * r1 * 0.6,
+          Math.sin(a) * r1 * 0.85
+        );
+        g.add(fruit);
+      }
+    }
   }
   const s = 0.8 + Math.random() * 0.6;
   g.scale.setScalar(s);
@@ -112,7 +126,14 @@ export function buildWorld(scene) {
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i).normalize().multiplyScalar(R + (Math.random() - 0.5) * 0.28);
+    v.fromBufferAttribute(pos, i).normalize();
+    // Deterministic jitter keyed on position: the sphere's seam/pole vertices
+    // are duplicated, and random displacement tears cracks between them —
+    // hashing the (rounded) position moves duplicates identically.
+    const hx = Math.round(v.x * 1e4), hy = Math.round(v.y * 1e4), hz = Math.round(v.z * 1e4);
+    const h = Math.sin(hx * 12.9898 + hy * 78.233 + hz * 37.719) * 43758.5453;
+    const jitter = (h - Math.floor(h)) - 0.5;
+    v.multiplyScalar(R + jitter * 0.28);
     pos.setXYZ(i, v.x, v.y, v.z);
   }
   geo.computeVertexNormals();

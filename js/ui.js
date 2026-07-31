@@ -5,13 +5,14 @@ export class UI {
     this.el = {};
     for (const id of [
       'menu', 'hud', 'death',
-      'menu-best', 'scheme-hint', 'btn-tap', 'btn-swipe',
-      'hud-distance', 'hud-balls', 'hud-closecalls',
+      'menu-best', 'scheme-hint', 'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden',
+      'hud-distance', 'hud-balls', 'hud-closecalls', 'stage-banner',
       'death-distance', 'death-best', 'death-stats', 'death-prompt',
     ]) {
       this.el[id] = document.getElementById(id);
     }
-    this.onScreenTap = null; // set by main; menu/death taps land here
+    this.onScreenTap = null;   // set by main; menu/death taps land here
+    this.onBreedChange = null; // set by main; rebuilds the dog mesh
 
     this.el['btn-tap'].addEventListener('click', (e) => {
       e.stopPropagation();
@@ -21,11 +22,31 @@ export class UI {
       e.stopPropagation();
       this._setScheme('swipe');
     });
+    this.el['btn-gsp'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._setBreed('gsp');
+    });
+    this.el['btn-golden'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._setBreed('golden');
+    });
+    this._breedButtons(localStorage.getItem('fetchrun.breed') || 'gsp');
     this.el.menu.addEventListener('click', () => this.onScreenTap?.());
     this.el.death.addEventListener('click', () => this.onScreenTap?.());
 
     this._setScheme(input.scheme);
     this.showMenu();
+  }
+
+  _setBreed(breed) {
+    localStorage.setItem('fetchrun.breed', breed);
+    this._breedButtons(breed);
+    this.onBreedChange?.(breed);
+  }
+
+  _breedButtons(breed) {
+    this.el['btn-gsp'].classList.toggle('active', breed === 'gsp');
+    this.el['btn-golden'].classList.toggle('active', breed === 'golden');
   }
 
   _setScheme(scheme) {
@@ -53,6 +74,17 @@ export class UI {
   showRunning() {
     this._show('hud');
     this.el['hud-closecalls'].textContent = '';
+    this.el['stage-banner'].classList.add('hidden');
+  }
+
+  showStageBanner(stage) {
+    const el = this.el['stage-banner'];
+    el.textContent = `STAGE ${stage}`;
+    el.classList.remove('hidden');
+    // Restart the pop animation
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
   }
 
   updateHUD(game) {
@@ -68,7 +100,7 @@ export class UI {
     this.el['death-distance'].textContent = `${d}m`;
     this.el['death-best'].textContent = game.isNewBest ? 'NEW BEST!' : `best: ${game.best}m`;
     this.el['death-stats'].textContent =
-      `time: ${game.time.toFixed(1)}s   🎾 ${game.balls}   close calls: ${game.nearMisses}`;
+      `stage ${game.stage}   time: ${game.time.toFixed(1)}s   🎾 ${game.balls}   close calls: ${game.nearMisses}`;
     this.el['death-prompt'].classList.add('hidden');
   }
 
