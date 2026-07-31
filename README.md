@@ -3,7 +3,13 @@
 Endless runner for iOS: a dog sprints through the backyard dodging obstacles.
 Goal: on the App Store by end of August 2026.
 
-**Stack:** vanilla HTML5/Canvas + JS, wrapped with Capacitor for iOS (Week 3).
+**Stack:** Three.js (vendored in `libs/`, no build step) + vanilla JS, wrapped with Capacitor for iOS (Week 3).
+
+**Look:** low-poly "tiny planet" — the dog runs on a small globe that rolls
+toward the camera; obstacles crest the horizon and come to you. Sunset
+picnic-park theme: gnomes, picnic baskets, sprinklers, benches; collectible
+tennis balls; trees/flowers/clouds/sun for scenery. All geometry is built from
+Three.js primitives in code — no model files, easy to restyle.
 
 ## Run it
 

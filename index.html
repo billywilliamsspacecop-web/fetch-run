@@ -7,9 +7,42 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Fetch Run</title>
   <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    { "imports": { "three": "./libs/three.module.js" } }
+  </script>
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <div id="app"></div>
+
+  <div id="hud" class="overlay hidden">
+    <div id="hud-distance">0m</div>
+    <div id="hud-balls">🎾 0</div>
+    <div id="hud-closecalls"></div>
+  </div>
+
+  <div id="menu" class="overlay">
+    <h1>FETCH RUN</h1>
+    <p class="subtitle">(working title)</p>
+    <p id="menu-best" class="best hidden"></p>
+    <p class="prompt">Tap anywhere to run</p>
+    <div class="controls-box">
+      <p class="controls-label">CONTROLS</p>
+      <div class="controls-row">
+        <button id="btn-tap" class="scheme-btn">TAP ZONES</button>
+        <button id="btn-swipe" class="scheme-btn">SWIPE</button>
+      </div>
+      <p id="scheme-hint" class="hint"></p>
+    </div>
+  </div>
+
+  <div id="death" class="overlay hidden">
+    <h2>WIPEOUT!</h2>
+    <p id="death-distance" class="big-distance"></p>
+    <p id="death-best" class="best"></p>
+    <p id="death-stats" class="stats"></p>
+    <p id="death-prompt" class="prompt hidden">Tap to run again</p>
+  </div>
+
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

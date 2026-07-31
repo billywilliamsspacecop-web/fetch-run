@@ -7,15 +7,155 @@
 html, body {
   height: 100%;
   overflow: hidden;
-  background: #1a1a1a;
+  background: #ffd9a8;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  font-family: ui-rounded, -apple-system, "Segoe UI", sans-serif;
 }
 
-#game {
+#app, #app canvas {
+  position: fixed;
+  inset: 0;
   display: block;
-  width: 100%;
-  height: 100%;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #fff;
+  z-index: 10;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* --- menu --- */
+#menu {
+  background: linear-gradient(rgba(60, 30, 10, 0.35), rgba(60, 30, 10, 0.55));
+  gap: 10px;
+}
+
+#menu h1 {
+  font-size: clamp(44px, 14vw, 72px);
+  letter-spacing: 2px;
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
+
+.subtitle {
+  opacity: 0.7;
+  font-size: 14px;
+  margin-top: -8px;
+}
+
+.best {
+  color: #ffd54f;
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.prompt {
+  font-size: 19px;
+  font-weight: 700;
+  margin-top: 22px;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.55; }
+}
+
+.controls-box {
+  margin-top: 40px;
+  width: min(86vw, 420px);
+}
+
+.controls-label {
+  font-size: 12px;
+  letter-spacing: 2px;
+  opacity: 0.7;
+  margin-bottom: 10px;
+}
+
+.controls-row {
+  display: flex;
+  gap: 12px;
+}
+
+.scheme-btn {
+  flex: 1;
+  padding: 18px 8px;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: inherit;
+  border: none;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  cursor: pointer;
+}
+
+.scheme-btn.active {
+  background: #ffd54f;
+  color: #402a10;
+}
+
+.hint {
+  margin-top: 12px;
+  font-size: 14px;
+  opacity: 0.75;
+}
+
+/* --- HUD --- */
+#hud {
+  justify-content: flex-start;
+  padding-top: max(18px, env(safe-area-inset-top));
+  pointer-events: none;
+  gap: 2px;
+}
+
+#hud-distance {
+  font-size: 30px;
+  font-weight: 800;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+#hud-balls {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+#hud-closecalls {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffd54f;
+}
+
+/* --- death --- */
+#death {
+  background: rgba(40, 15, 5, 0.55);
+  gap: 8px;
+}
+
+#death h2 {
+  font-size: 42px;
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
+
+.big-distance {
+  font-size: 52px;
+  font-weight: 800;
+  color: #ffd54f;
+}
+
+.stats {
+  font-size: 16px;
+  opacity: 0.85;
 }
