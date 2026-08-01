@@ -250,9 +250,14 @@ export class Game {
           continue;
         }
       } else if (e.isRiver) {
-        // The river occupies [0, depth] behind its leading edge
+        // The river occupies [0, depth] behind its leading edge.
+        // Safety uses BOTH the smoothed position and the committed target
+        // lane — if the player already tapped the bridge lane, the eased
+        // tween catching up a few frames late must never be fatal.
         const overWater = cur > -0.015 && cur < e.depth + 0.015;
-        const offBridge = Math.abs(this.lane - e.bridgeLane) > 0.55;
+        const laneSafe = Math.abs(this.lane - e.bridgeLane) <= 0.6;
+        const committedSafe = this.targetLane === e.bridgeLane;
+        const offBridge = !laneSafe && !committedSafe;
         if (overWater && offBridge && !this._survivesHit(e, 'splash')) return;
         if (cur > e.depth + CONFIG.despawnBehindAngle) this.spawner.remove(e);
         continue;
@@ -319,11 +324,17 @@ export class Game {
     // Threat scan: anything about to cross the squirrel's line
     const danger = new Array(CONFIG.lanes).fill(0);
     let bridgeLane = null;
+    let bridgeDist = Infinity;
     for (const e of this.spawner.entities) {
       const cur = this.spin + e.theta0 - sqT;
       if (e.isRiver) {
-        // Long water: get on the bridge before the front, stay on until past
-        if (cur > -0.35 && cur < e.depth + 0.05) bridgeLane = e.bridgeLane;
+        // Long water: get on the bridge before the front, stay on until past.
+        // If two rivers' windows ever overlap, track the nearer one instead
+        // of whichever happened to come last in the entity list.
+        if (cur > -0.35 && cur < e.depth + 0.05 && Math.abs(cur) < bridgeDist) {
+          bridgeLane = e.bridgeLane;
+          bridgeDist = Math.abs(cur);
+        }
         continue;
       }
       if (cur < -0.35 || cur > 0.04) continue;
