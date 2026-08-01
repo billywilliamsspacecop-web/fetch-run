@@ -47,8 +47,6 @@ export class Game {
     this.invulnTimer = 0;   // grace after a steak save
     this.nextWaterAt = Infinity; // spin value that triggers the next river
     this.waterStageBridgeLane = null; // fixed for the whole current water stage
-    this._riverAtRisk = null;    // grace-window tracking (see river collision)
-    this._offBridgeTime = 0;
     // Squirrel chase state
     this.sqLane = 2;
     this.sqTargetLane = 2;
@@ -257,29 +255,18 @@ export class Game {
           continue;
         }
       } else if (e.isRiver) {
-        // The river occupies [0, depth] behind its leading edge.
-        // Safety uses BOTH the smoothed position and the committed target
-        // lane — if the player already tapped the bridge lane, the eased
-        // tween catching up a few frames late must never be fatal. On top
-        // of that, being off-bridge only becomes fatal after a short grace
-        // window (offBridgeGrace) of SUSTAINED wrongness, so a single bad
-        // frame — input lag, animation catch-up — can never insta-kill.
-        const overWater = cur > -0.015 && cur < e.depth + 0.015;
-        const laneSafe = Math.abs(this.lane - e.bridgeLane) <= 0.6;
-        const committedSafe = this.targetLane === e.bridgeLane;
-        const offBridge = overWater && !laneSafe && !committedSafe;
-        if (e === this._riverAtRisk) {
-          if (offBridge) this._offBridgeTime += dt;
-          else { this._offBridgeTime = 0; this._riverAtRisk = null; }
-        } else if (offBridge) {
-          this._riverAtRisk = e;
-          this._offBridgeTime = dt;
-        }
-        if (
-          offBridge &&
-          this._offBridgeTime >= CONFIG.water.offBridgeGrace &&
-          !this._survivesHit(e, 'splash')
-        ) return;
+        // Inverted model: the WATER is the hurtbox, the BRIDGE is safe by
+        // default. The hazard zone starts CONFIG.water.approachBuffer before
+        // the water's literal leading edge and ends riverExitBuffer after
+        // its trailing edge — so if you're already on the bridge lane, you
+        // are safe before you're even wet, and staying on it a beat past
+        // the far bank is never fatal either. Bridge tolerance is generous
+        // and applies uniformly; no separate grace-timer/committed-lane
+        // bookkeeping needed once the hazard window itself has slack.
+        const { approachBuffer, exitBuffer, safeLaneDist } = CONFIG.water;
+        const inHazardZone = cur > -approachBuffer && cur < e.depth + exitBuffer;
+        const onBridge = Math.abs(this.lane - e.bridgeLane) <= safeLaneDist;
+        if (inHazardZone && !onBridge && !this._survivesHit(e, 'splash')) return;
         if (cur > e.depth + CONFIG.despawnBehindAngle) this.spawner.remove(e);
         continue;
       } else {
@@ -349,10 +336,14 @@ export class Game {
     for (const e of this.spawner.entities) {
       const cur = this.spin + e.theta0 - sqT;
       if (e.isRiver) {
-        // Long water: get on the bridge before the front, stay on until past.
-        // If two rivers' windows ever overlap, track the nearer one instead
-        // of whichever happened to come last in the entity list.
-        if (cur > -0.35 && cur < e.depth + 0.05 && Math.abs(cur) < bridgeDist) {
+        // The quarry always takes the bridge: lock on well before the front
+        // (generous lead so it's visibly ON the bridge, not scrambling for
+        // it) and hold until clearly past the far bank. If two rivers'
+        // windows ever overlap, track the nearer one, not whichever
+        // happened to come last in the entity list.
+        const lockOnAt = 0.35 + CONFIG.water.approachBuffer;
+        const releaseAt = e.depth + CONFIG.water.exitBuffer;
+        if (cur > -lockOnAt && cur < releaseAt && Math.abs(cur) < bridgeDist) {
           bridgeLane = e.bridgeLane;
           bridgeDist = Math.abs(cur);
         }

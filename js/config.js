@@ -40,7 +40,13 @@ export const CONFIG = {
     every: 8,
     riverDepth: 0.42,      // radians of water along the travel direction
     spacing: 0.95,         // radians from one river front to the next
-    offBridgeGrace: 0.22,  // seconds you can be off-bridge before it's fatal
+    // Inverted hazard model: water is the hurtbox, the bridge lane is safe.
+    // The hazard zone starts BEFORE the water's literal edge and ends AFTER
+    // it, so being correctly positioned in advance (or lingering a beat on
+    // the far bank) is never fatal — no separate grace-timer bookkeeping.
+    approachBuffer: 0.14,  // rad of lead-in before the water where it's already "live"
+    exitBuffer: 0.08,      // rad of trailing slack after the water's far edge
+    safeLaneDist: 0.65,    // lane-units from the bridge center that count as "on it"
   },
 
   // Intro chase cutscene
