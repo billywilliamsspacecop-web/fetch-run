@@ -46,6 +46,7 @@ export class Game {
     this.extraLife = false; // steak held (non-stacking)
     this.invulnTimer = 0;   // grace after a steak save
     this.nextWaterAt = Infinity; // spin value that triggers the next river
+    this.waterStageBridgeLane = null; // fixed for the whole current water stage
     this._riverAtRisk = null;    // grace-window tracking (see river collision)
     this._offBridgeTime = 0;
     // Squirrel chase state
@@ -166,8 +167,12 @@ export class Game {
       this.stage = stageNow;
       const water = this.isWaterStage;
       this.ui.showStageBanner(this.stage, water);
-      // Water stages alternate land chunks with long rivers
+      // Water stages alternate land chunks with long rivers. One bridge
+      // lane for the ENTIRE stage — re-rolling per river meant crossing
+      // river 1 safely, settling in, then river 2 silently putting the
+      // bridge somewhere else with zero warning. Pick once, stay simple.
       this.nextWaterAt = water ? this.spin + 0.4 : Infinity;
+      this.waterStageBridgeLane = water ? Math.floor(Math.random() * CONFIG.lanes) : null;
     }
     this.speed = Math.min(
       CONFIG.maxSpeed,
@@ -196,7 +201,7 @@ export class Game {
     if (this.spawnTimer <= 0) {
       const rowTheta0 = -CONFIG.spawnAheadAngle - this.spin;
       if (this.isWaterStage && this.spin >= this.nextWaterAt) {
-        this.spawner.spawnRiver(this.spin, CONFIG.water.riverDepth);
+        this.spawner.spawnRiver(this.spin, CONFIG.water.riverDepth, this.waterStageBridgeLane);
         this.nextWaterAt = this.spin + CONFIG.water.spacing;
       } else if (!this._rowLandsInWater(rowTheta0)) {
         if (this.power?.type === 'yarn') this.spawner.spawnBallRow(this.spin);

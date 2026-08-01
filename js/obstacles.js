@@ -461,10 +461,12 @@ export class Spawner {
     }
   }
 
-  // Long water section: leading edge at spawn distance, `depth` radians deep
-  spawnRiver(spin, depth) {
+  // Long water section: leading edge at spawn distance, `depth` radians deep.
+  // forcedBridgeLane lets a whole water STAGE share one lane across every
+  // river in it, instead of re-rolling per river — see game.js.
+  spawnRiver(spin, depth, forcedBridgeLane = null) {
     const theta0 = -CONFIG.spawnAheadAngle - spin;
-    const bridgeLane = Math.floor(Math.random() * CONFIG.lanes);
+    const bridgeLane = forcedBridgeLane ?? Math.floor(Math.random() * CONFIG.lanes);
     const group = makeRiver(bridgeLane, depth);
     const pivot = surfacePivot(theta0, 0, group);
     this.planetGroup.add(pivot);

@@ -40,7 +40,7 @@ export const CONFIG = {
     every: 8,
     riverDepth: 0.42,      // radians of water along the travel direction
     spacing: 0.95,         // radians from one river front to the next
-    offBridgeGrace: 0.16,  // seconds you can be off-bridge before it's fatal
+    offBridgeGrace: 0.22,  // seconds you can be off-bridge before it's fatal
   },
 
   // Intro chase cutscene
