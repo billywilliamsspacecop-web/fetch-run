@@ -158,9 +158,9 @@ function makeFrisbee() {
 }
 
 function makeBone() {
-  // Chill Bone: slows the world down
+  // Golden Bone: 2x score
   const g = new THREE.Group();
-  const boneMat = lambert(0xf3eee2);
+  const boneMat = lambert(0xf5c842);
   const bone = new THREE.Group();
   const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 10), boneMat);
   shaft.rotation.z = Math.PI / 2;
@@ -196,11 +196,132 @@ function makeMagnet() {
   return g;
 }
 
+function makeYarn() {
+  // Yarn Ball (cat toy): ball frenzy
+  const g = new THREE.Group();
+  const yarn = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 13), lambert(0xd06bc2));
+  const strandGeo = new THREE.TorusGeometry(0.26, 0.022, 6, 24);
+  const strandMat = lambert(0xb84fa8);
+  for (const [rx, ry] of [[0.6, 0.3], [1.4, 1.1], [2.2, 0.2]]) {
+    const s = new THREE.Mesh(strandGeo, strandMat);
+    s.rotation.set(rx, ry, 0);
+    yarn.add(s);
+  }
+  // Loose strand trailing off
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3, 6), strandMat);
+  tail.position.set(0.2, -0.18, 0);
+  tail.rotation.z = 0.8;
+  yarn.add(tail);
+  yarn.position.y = 0.6;
+  g.add(yarn);
+  g.userData.ball = yarn;
+  return g;
+}
+
+function makeSteak() {
+  // Steak: extra life (very rare)
+  const g = new THREE.Group();
+  const steak = new THREE.Group();
+  const meat = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 11), lambert(0xb04438));
+  meat.scale.set(1.15, 0.35, 0.85);
+  steak.add(meat);
+  const fat = new THREE.Mesh(new THREE.TorusGeometry(0.25, 0.035, 8, 22), lambert(0xf0e0cc));
+  fat.rotation.x = Math.PI / 2;
+  fat.scale.set(1.12, 0.85, 1);
+  steak.add(fat);
+  const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 8), lambert(0xf3eee2));
+  bone.position.set(0.26, 0, 0.05);
+  steak.add(bone);
+  steak.position.y = 0.62;
+  steak.rotation.z = 0.25;
+  g.add(steak);
+  g.userData.ball = steak;
+  return g;
+}
+
+// Weighted roster — steak is the jackpot
 const POWERUPS = [
-  { type: 'zoomies', make: makeFrisbee },
-  { type: 'chill', make: makeBone },
-  { type: 'magnet', make: makeMagnet },
+  { type: 'zoomies', make: makeFrisbee, weight: 27 },
+  { type: 'magnet', make: makeMagnet, weight: 27 },
+  { type: 'goldbone', make: makeBone, weight: 20 },
+  { type: 'yarn', make: makeYarn, weight: 20 },
+  { type: 'steak', make: makeSteak, weight: 6 },
 ];
+const POWERUP_TOTAL_WEIGHT = POWERUPS.reduce((a, p) => a + p.weight, 0);
+
+function pickPowerup() {
+  let roll = Math.random() * POWERUP_TOTAL_WEIGHT;
+  for (const p of POWERUPS) {
+    roll -= p.weight;
+    if (roll <= 0) return p;
+  }
+  return POWERUPS[0];
+}
+
+// --- river event: water across every lane, safe bridge on one ---
+
+const RIVER_HALF = 0.2; // lateral half-width in radians (covers all lanes + margin)
+
+export function makeRiver(bridgeLane) {
+  const R = CONFIG.planetRadius;
+  const g = new THREE.Group();
+  const waterMat = new THREE.MeshLambertMaterial({
+    color: 0x4fa8d8, flatShading: true, transparent: true, opacity: 0.9,
+  });
+  // Tiles hug the sphere laterally: each is rotated down the curve
+  const step = 0.03;
+  for (let a = -RIVER_HALF; a <= RIVER_HALF + 0.001; a += step) {
+    const laneAlphaAtTile = a;
+    const tile = new THREE.Mesh(new THREE.BoxGeometry(R * step + 0.06, 0.1, 0.85), waterMat);
+    tile.position.set(Math.sin(a) * R, Math.cos(a) * R - R + 0.05, 0);
+    tile.rotation.z = -a;
+    g.add(tile);
+  }
+  // Bridge planks + rails on the safe lane
+  const bridgeAlpha = laneAlpha(bridgeLane);
+  const wood = lambert(COLORS.bench);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.09, 1.0), wood);
+  deck.position.set(Math.sin(bridgeAlpha) * R, Math.cos(bridgeAlpha) * R - R + 0.16, 0);
+  deck.rotation.z = -bridgeAlpha;
+  g.add(deck);
+  for (const side of [-1, 1]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 1.0), wood);
+    rail.position.set(
+      Math.sin(bridgeAlpha) * R + side * 0.45,
+      Math.cos(bridgeAlpha) * R - R + 0.28,
+      0
+    );
+    rail.rotation.z = -bridgeAlpha;
+    g.add(rail);
+  }
+  return g;
+}
+
+// --- intro fence: spans the lanes, smashed through at the end of the short ---
+
+export function makeFence() {
+  const R = CONFIG.planetRadius;
+  const g = new THREE.Group();
+  const wood = lambert(0xb08a5a);
+  const step = 0.028;
+  for (let a = -RIVER_HALF; a <= RIVER_HALF + 0.001; a += step) {
+    const picket = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.85, 0.06), wood);
+    picket.position.set(Math.sin(a) * R, Math.cos(a) * R - R + 0.42, 0);
+    picket.rotation.z = -a;
+    g.add(picket);
+  }
+  for (const railY of [0.28, 0.62]) {
+    for (let a = -RIVER_HALF; a <= RIVER_HALF - 0.05 + 0.001; a += 0.05) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(R * 0.05 + 0.05, 0.09, 0.05), wood);
+      const mid = a + 0.025;
+      rail.position.set(Math.sin(mid) * R, Math.cos(mid) * R - R + railY, 0.05);
+      rail.rotation.z = -mid;
+      g.add(rail);
+    }
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
 
 // Per-type hitboxes: lat in lane units, ang in radians along travel direction.
 // The dog's own hitbox (CONFIG.dogHitbox) is added on top at collision time.
@@ -244,10 +365,32 @@ export class Spawner {
     if (Math.random() < CONFIG.powerups.chance) {
       const freeLane = shuffled.find((l) => !usedLanes.includes(l));
       if (freeLane !== undefined) {
-        const p = POWERUPS[Math.floor(Math.random() * POWERUPS.length)];
+        const p = pickPowerup();
         this._add(p.make(), freeLane, theta0, { isPower: true, ptype: p.type });
       }
     }
+  }
+
+  // During Yarn Ball frenzy: rows are all tennis balls, no obstacles
+  spawnBallRow(spin) {
+    const theta0 = -CONFIG.spawnAheadAngle - spin;
+    const lanes = [...Array(CONFIG.lanes).keys()].sort(() => Math.random() - 0.5);
+    for (const lane of lanes.slice(0, 3)) {
+      this._add(makeBall(), lane, theta0, { isBall: true });
+    }
+  }
+
+  spawnRiver(spin) {
+    const theta0 = -CONFIG.spawnAheadAngle - spin;
+    const bridgeLane = Math.floor(Math.random() * CONFIG.lanes);
+    const group = makeRiver(bridgeLane);
+    const pivot = surfacePivot(theta0, 0, group);
+    this.planetGroup.add(pivot);
+    this.entities.push({
+      pivot, group, lane: bridgeLane, theta0,
+      isBall: false, isPower: false, isRiver: true, bridgeLane,
+      ptype: null, hitbox: null, collected: false,
+    });
   }
 
   _add(group, lane, theta0, extra = {}) {

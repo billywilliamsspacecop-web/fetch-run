@@ -4,11 +4,11 @@ export class UI {
     this.input = input;
     this.el = {};
     for (const id of [
-      'menu', 'hud', 'death',
+      'menu', 'hud', 'death', 'intro-hint',
       'menu-best', 'menu-bank', 'scheme-hint',
       'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden', 'btn-cat',
-      'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'stage-banner',
-      'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
+      'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'hud-life', 'stage-banner',
+      'death-title', 'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
       'd-stage', 'd-time', 'd-speed', 'd-balls', 'd-close',
       'l-runs', 'l-dist', 'l-balls', 'recent-runs',
     ]) {
@@ -50,6 +50,7 @@ export class UI {
     });
     this._breedButtons(localStorage.getItem('fetchrun.breed') || 'gsp');
     this.el.menu.addEventListener('click', () => this.onScreenTap?.());
+    this.el['intro-hint'].addEventListener('click', () => this.onScreenTap?.());
 
     this._setScheme(input.scheme);
     this.showMenu();
@@ -78,9 +79,13 @@ export class UI {
   }
 
   _show(which) {
-    for (const id of ['menu', 'hud', 'death']) {
+    for (const id of ['menu', 'hud', 'death', 'intro-hint']) {
       this.el[id].classList.toggle('hidden', id !== which);
     }
+  }
+
+  showIntro() {
+    this._show('intro-hint');
   }
 
   // ---- persistent stats ------------------------------------------------
@@ -152,13 +157,20 @@ export class UI {
     const p = game.power;
     this.el['hud-power'].classList.toggle('hidden', !p);
     if (p) {
-      const label = { zoomies: '🥏 ZOOMIES', chill: '🦴 CHILL', magnet: '🧲 MAGNET' }[p.type];
+      const label = {
+        zoomies: '🥏 ZOOMIES 2X',
+        magnet: '🧲 MAGNET',
+        goldbone: '🦴 2X SCORE',
+        yarn: '🧶 BALL FRENZY',
+      }[p.type];
       this.el['hud-power'].textContent = `${label} ${Math.ceil(p.timeLeft)}s`;
     }
+    this.el['hud-life'].classList.toggle('hidden', !game.extraLife);
   }
 
   showDeath(game) {
     this._show('death');
+    this.el['death-title'].textContent = game.deathCause === 'splash' ? 'SPLASH!' : 'WIPEOUT!';
     const d = Math.floor(game.distance);
     this.el['death-distance'].textContent = `${d}m`;
     this.el['death-best'].textContent = game.isNewBest ? 'NEW BEST!' : `best: ${game.best}m`;

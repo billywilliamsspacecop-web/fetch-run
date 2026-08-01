@@ -167,6 +167,32 @@ html, body {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
 }
 
+#intro-hint {
+  justify-content: flex-end;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+  background: transparent;
+}
+
+.skip-hint {
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0.65;
+  letter-spacing: 1px;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+#hud-life {
+  margin-top: 4px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: rgba(220, 80, 60, 0.85);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+}
+
 #hud-power {
   margin-top: 6px;
   padding: 4px 14px;

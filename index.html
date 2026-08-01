@@ -19,6 +19,7 @@
     <div id="hud-balls">🎾 0</div>
     <div id="hud-closecalls"></div>
     <div id="hud-power" class="hidden"></div>
+    <div id="hud-life" class="hidden">🥩 EXTRA LIFE</div>
     <div id="stage-banner" class="hidden"></div>
   </div>
 
@@ -46,9 +47,13 @@
     </div>
   </div>
 
+  <div id="intro-hint" class="overlay hidden">
+    <p class="skip-hint">tap to skip</p>
+  </div>
+
   <div id="death" class="overlay hidden">
     <div class="card">
-      <h2>WIPEOUT!</h2>
+      <h2 id="death-title">WIPEOUT!</h2>
       <p id="death-distance" class="big-distance"></p>
       <p id="death-best" class="best"></p>
       <div class="stat-rows">

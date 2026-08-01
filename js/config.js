@@ -23,14 +23,31 @@ export const CONFIG = {
   doubleSpawnChance: 0.28, // chance a row has 2 obstacles (never blocks all lanes)
   ballChance: 0.45,        // chance a row also drops a tennis ball in a free lane
 
-  // Powerups: rare pickups granting a timed ability
+  // Powerups: rare pickups granting a timed ability (steak is held, not timed)
   powerups: {
-    chance: 0.055,         // per spawn row
+    chance: 0.06,          // per spawn row
     duration: 7,           // seconds active
-    chillFactor: 0.55,     // world-speed multiplier during Chill Bone
-    magnetLaneDist: 2.6,   // Ball Magnet vacuum reach, in lanes
-    magnetWindow: 0.16,    // and along the travel direction, radians
+    magnetLaneDist: 2.6,   // Ball Magnet warp reach, in lanes
+    magnetWindow: 0.5,     // balls inside this travel window get pulled, radians
+    magnetPull: 6,         // warp strength (per-second lerp rate)
+    zoomiesAnimBoost: 1.7, // gallop animation speed multiplier during Zoomies
   },
+
+  // River event: full-width water, one bridge lane — miss it and SPLASH
+  river: {
+    chance: 0.025,         // per-row odds (x10 in game) once off cooldown
+    minStage: 2,
+    cooldown: 14,          // seconds between rivers minimum
+  },
+
+  // Intro chase cutscene
+  intro: {
+    duration: 2.6,         // seconds; tap to skip
+    fenceAhead: 0.55,      // fence spawns this far ahead of the dog (radians)
+  },
+
+  // The squirrel runs at this angle ahead on the globe (near the crest)
+  squirrelTheta: 0.06,
 
   // Rendering
   maxFPS: 200,             // frame cap; high-refresh displays run uncapped below this

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CONFIG, PALETTES } from './config.js';
 import { buildWorld, STAGE_TINTS } from './world.js';
 import { buildDog } from './dog.js';
+import { buildSquirrel } from './squirrel.js';
 import { FX } from './fx.js';
 import { Input } from './input.js';
 import { UI } from './ui.js';
@@ -46,10 +47,20 @@ dogCarrier.add(dog.group);
 dogPivot.add(dogCarrier);
 scene.add(dogPivot);
 
+// The squirrel: the chased quarry, running near the crest (game drives its pivot)
+const squirrel = buildSquirrel();
+const squirrelPivot = new THREE.Group();
+const squirrelCarrier = new THREE.Group();
+squirrelCarrier.position.y = R + 0.05;
+squirrelCarrier.add(squirrel.group);
+squirrelPivot.add(squirrelCarrier);
+squirrelPivot.rotation.x = CONFIG.squirrelTheta;
+scene.add(squirrelPivot);
+
 // --- game wiring ---
 const input = new Input();
 const ui = new UI(input);
-const game = new Game({ planetGroup, dogPivot, fx }, input, ui);
+const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
 ui.onRunAgain = () => game.handleScreenTap();
 ui.onHome = () => game.goHome();
@@ -110,7 +121,13 @@ function frame(now) {
   last = now;
 
   game.update(dt);
-  dog.animate(now / 1000, game.speed, game.state, game.targetLane - game.lane);
+  const zoomies = game.power?.type === 'zoomies';
+  // Zoomies: the gallop cycle itself goes into overdrive
+  const animSpeed = game.speed * (zoomies ? CONFIG.powerups.zoomiesAnimBoost : 1);
+  dog.animate(now / 1000, animSpeed, game.state, game.targetLane - game.lane);
+  const chasing = game.state === 'intro' || game.state === 'running';
+  squirrel.group.visible = chasing;
+  if (chasing) squirrel.animate(now / 1000, animSpeed);
   game.spawner.animate(now / 1000);
   for (const c of clouds) c.rotation.x += c.userData.speed * dt;
   lerpPalette(dt);
@@ -125,7 +142,17 @@ function frame(now) {
       dog.group.getWorldPosition(dogWorldPos);
       dogWorldPos.z += 0.7; // just behind the paws
       fx.dust(dogWorldPos);
-      dustTimer = 0.09;
+      if (zoomies) {
+        // Wind streaks whipping past the runner
+        for (let i = 0; i < 2; i++) {
+          fx.speedLine(new THREE.Vector3(
+            dogWorldPos.x + (Math.random() - 0.5) * 3.4,
+            dogWorldPos.y + 0.4 + Math.random() * 1.6,
+            dogWorldPos.z - 3 - Math.random() * 3
+          ));
+        }
+      }
+      dustTimer = zoomies ? 0.05 : 0.09;
     }
   }
 
