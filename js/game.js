@@ -28,6 +28,7 @@ export class Game {
   }
 
   _reset() {
+    this.paused = false;
     this.time = 0;
     this.spin = 0;
     this.planetGroup.rotation.x = 0;
@@ -65,7 +66,7 @@ export class Game {
   // ---- input ----------------------------------------------------------
 
   _moveTo(lane) {
-    if (this.state !== 'running') return;
+    if (this.state !== 'running' || this.paused) return;
     this.targetLane = Math.max(0, Math.min(CONFIG.lanes - 1, lane));
   }
 
@@ -105,9 +106,28 @@ export class Game {
     this.ui.showMenu();
   }
 
+  // ---- pause ------------------------------------------------------------
+
+  pause() {
+    if (this.state !== 'running' && this.state !== 'intro') return;
+    this.paused = true;
+    this.ui.showPaused();
+  }
+
+  resume() {
+    this.paused = false;
+    this.ui.hidePaused();
+  }
+
+  togglePause() {
+    if (this.paused) this.resume();
+    else this.pause();
+  }
+
   // ---- update ---------------------------------------------------------
 
   update(dt) {
+    if (this.paused) return;
     if (this.state === 'menu') {
       this.spin += 0.045 * dt;
       this.planetGroup.rotation.x = this.spin;

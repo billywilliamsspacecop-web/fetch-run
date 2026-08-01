@@ -128,6 +128,8 @@ const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
 ui.onRunAgain = () => game.handleScreenTap();
 ui.onHome = () => game.goHome();
+ui.onPauseToggle = () => game.togglePause();
+ui.onHomeFromPause = () => { game.resume(); game.goHome(); };
 ui.onBreedChange = (breedKey) => {
   dogCarrier.remove(dog.group);
   dog = buildDog(breedKey, getEquip());
@@ -216,24 +218,39 @@ const dogWorldPos = new THREE.Vector3();
 // dt-based so any rate plays identically. Capped at CONFIG.maxFPS.
 const minFrameMs = 1000 / CONFIG.maxFPS;
 let last = performance.now();
+let pausedAccumMs = 0;   // total real time spent paused, excluded from anim clock
+let pauseStartedAt = null;
 function frame(now) {
   if (now - last < minFrameMs) {
     requestAnimationFrame(frame);
     return;
   }
-  const dt = Math.min((now - last) / 1000, 0.05); // clamp to avoid tab-switch jumps
+  const rawDt = (now - last) / 1000;
   last = now;
+
+  if (game.paused) {
+    if (pauseStartedAt === null) pauseStartedAt = now;
+    renderer.render(scene, camera); // keep the paused card visible, nothing else moves
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (pauseStartedAt !== null) {
+    pausedAccumMs += now - pauseStartedAt;
+    pauseStartedAt = null;
+  }
+  const dt = Math.min(rawDt, 0.05); // clamp to avoid tab-switch jumps
+  const animNow = now - pausedAccumMs; // gallop/cloud/etc phase excludes paused time
 
   game.update(dt);
   updateDebugOverlay(dt);
   const zoomies = game.power?.type === 'zoomies';
   // Zoomies: the gallop cycle itself goes into overdrive
   const animSpeed = game.speed * (zoomies ? CONFIG.powerups.zoomiesAnimBoost : 1);
-  dog.animate(now / 1000, animSpeed, game.state, game.targetLane - game.lane);
+  dog.animate(animNow / 1000, animSpeed, game.state, game.targetLane - game.lane);
   const chasing = game.state === 'intro' || game.state === 'running';
   squirrel.group.visible = chasing;
-  if (chasing) squirrel.animate(now / 1000, animSpeed);
-  game.spawner.animate(now / 1000);
+  if (chasing) squirrel.animate(animNow / 1000, animSpeed);
+  game.spawner.animate(animNow / 1000);
   for (const c of clouds) c.rotation.x += c.userData.speed * dt;
   lerpPalette(dt);
   fx.update(dt);

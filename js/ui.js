@@ -7,10 +7,11 @@ export class UI {
     this.input = input;
     this.el = {};
     for (const id of [
-      'menu', 'hud', 'death', 'intro-hint', 'shop',
+      'menu', 'hud', 'death', 'intro-hint', 'shop', 'paused',
       'menu-best', 'menu-bank', 'scheme-hint',
       'btn-shop', 'btn-shop-close', 'shop-bank', 'shop-items',
       'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden', 'btn-cat',
+      'btn-pause', 'btn-resume', 'btn-pause-home',
       'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'hud-life', 'stage-banner',
       'death-title', 'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
       'd-stage', 'd-time', 'd-speed', 'd-balls', 'd-close',
@@ -23,6 +24,21 @@ export class UI {
     this.onCosmeticsChange = null; // set by main; re-dresses runner / swaps chase
     this.onRunAgain = null;
     this.onHome = null;
+    this.onPauseToggle = null; // set by main; pause button + Resume
+    this.onHomeFromPause = null;
+
+    this.el['btn-pause'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onPauseToggle?.();
+    });
+    this.el['btn-resume'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onPauseToggle?.();
+    });
+    this.el['btn-pause-home'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onHomeFromPause?.();
+    });
 
     // Migrate: spendable bank starts from lifetime balls collected pre-shop
     if (localStorage.getItem('fetchrun.bank') === null) {
@@ -112,6 +128,17 @@ export class UI {
 
   showIntro() {
     this._show('intro-hint');
+    this.el['btn-pause'].classList.remove('hidden');
+  }
+
+  showPaused() {
+    this.el.paused.classList.remove('hidden');
+    this.el['btn-pause'].classList.add('hidden');
+  }
+
+  hidePaused() {
+    this.el.paused.classList.add('hidden');
+    this.el['btn-pause'].classList.remove('hidden');
   }
 
   // ---- persistent stats ------------------------------------------------
@@ -191,6 +218,24 @@ export class UI {
     this.onCosmeticsChange?.(equip);
   }
 
+  // Visual preview per cosmetic — a colored swatch for collars (they have no
+  // natural emoji), an emoji glyph for hats/chase since those map cleanly.
+  static ICONS = {
+    collar: {
+      default: '#cfcfcf', sky: '#3aa8e0', gold: '#f5c842', neon: '#7cfc4f',
+    },
+    hat: { none: '🚫', party: '🎉', propeller: '🌀', crown: '👑' },
+    chase: { squirrel: '🐿️', butterfly: '🦋', rabbit: '🐇' },
+  };
+
+  _chipIcon(cat, id) {
+    if (cat === 'collar') {
+      const color = UI.ICONS.collar[id] ?? '#cfcfcf';
+      return `<div class="chip-icon collar-swatch" style="--swatch-color:${color}"></div>`;
+    }
+    return `<div class="chip-icon">${UI.ICONS[cat]?.[id] ?? '❔'}</div>`;
+  }
+
   _renderShop() {
     this.el['shop-bank'].textContent = `🎾 ${this.bank()}`;
     const unlocks = this.unlocks();
@@ -202,9 +247,11 @@ export class UI {
           .map((item) => {
             const owned = unlocks[cat].includes(item.id);
             const equipped = equip[cat] === item.id;
-            const cls = `shop-chip${equipped ? ' equipped' : owned ? ' owned' : ''}${!owned && this.bank() < item.price ? ' locked' : ''}`;
+            // Not-yet-owned items show a darkened preview icon (a teaser of
+            // what you're buying), regardless of whether you can afford it.
+            const cls = `shop-chip${equipped ? ' equipped' : owned ? ' owned' : ' locked'}`;
             const sub = equipped ? 'EQUIPPED' : owned ? 'EQUIP' : `🎾 ${item.price}`;
-            return `<button class="${cls}" data-cat="${cat}" data-id="${item.id}">${item.label}<span>${sub}</span></button>`;
+            return `<button class="${cls}" data-cat="${cat}" data-id="${item.id}">${this._chipIcon(cat, item.id)}${item.label}<span>${sub}</span></button>`;
           })
           .join('');
         return `<p class="subhead">${labels[cat]}</p><div class="shop-row">${chips}</div>`;
@@ -217,6 +264,8 @@ export class UI {
   showMenu(best = Number(localStorage.getItem('fetchrun.best') || 0)) {
     this._show('menu');
     this.el.shop.classList.add('hidden');
+    this.el.paused.classList.add('hidden');
+    this.el['btn-pause'].classList.add('hidden');
     this.el['menu-best'].classList.toggle('hidden', best <= 0);
     this.el['menu-best'].textContent = `Best: ${best}m`;
     const bank = this.bank();
@@ -228,6 +277,7 @@ export class UI {
     this._show('hud');
     this.el['hud-closecalls'].textContent = '';
     this.el['stage-banner'].classList.add('hidden');
+    this.el['btn-pause'].classList.remove('hidden');
   }
 
   showStageBanner(stage, isWater = false) {
@@ -266,6 +316,7 @@ export class UI {
 
   showDeath(game) {
     this._show('death');
+    this.el['btn-pause'].classList.add('hidden');
     this.el['death-title'].textContent = game.deathCause === 'splash' ? 'SPLASH!' : 'WIPEOUT!';
     const d = Math.floor(game.distance);
     this.el['death-distance'].textContent = `${d}m`;
