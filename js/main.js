@@ -94,6 +94,38 @@ ui.onCosmeticsChange = (equip) => {
 };
 window.__game = game; // debug/test handle
 
+// --- on-screen diagnostics (?debug=1 in the URL) ---
+// Lets a real death be screenshotted with the exact numbers the collision
+// code was using at that instant — far more useful than guessing from a
+// description when a bug reproduces on-device but not in scripted tests.
+const debugOn = new URLSearchParams(location.search).has('debug');
+const debugEl = document.getElementById('debug-overlay');
+if (debugOn) debugEl.classList.remove('hidden');
+let lastDt = 0, lastFrameMs = 0;
+function updateDebugOverlay(dt) {
+  if (!debugOn) return;
+  lastDt = dt;
+  lastFrameMs = dt * 1000;
+  const g = game;
+  const dogT = CONFIG.dogTheta;
+  const river = g.spawner?.entities.find((e) => e.isRiver);
+  let riverInfo = 'no river nearby';
+  if (river) {
+    const cur = g.spin + river.theta0 - dogT;
+    const { approachBuffer, exitBuffer, safeLaneDist } = CONFIG.water;
+    const inHazard = cur > -approachBuffer && cur < river.depth + exitBuffer;
+    const onBridge = Math.abs(g.lane - river.bridgeLane) <= safeLaneDist;
+    riverInfo =
+      `river cur=${cur.toFixed(3)} depth=${river.depth} bridgeLane=${river.bridgeLane}\n` +
+      `inHazardZone=${inHazard}  onBridge=${onBridge}  ${inHazard && !onBridge ? '*** WOULD DIE ***' : 'safe'}`;
+  }
+  debugEl.textContent =
+    `state=${g.state} stage=${g.stage} water=${g.isWaterStage} stageBridgeLane=${g.waterStageBridgeLane}\n` +
+    `lane=${g.lane?.toFixed(3)} targetLane=${g.targetLane} sqLane=${g.sqLane?.toFixed(2)} sqTarget=${g.sqTargetLane}\n` +
+    `frameMs=${lastFrameMs.toFixed(1)} fps=${(1000 / lastFrameMs).toFixed(0)} entities=${g.spawner?.entities.length ?? 0}\n` +
+    riverInfo;
+}
+
 // --- per-stage sky palette lerping ---
 const paletteState = {
   sky: new THREE.Color(PALETTES[0].sky),
@@ -144,6 +176,7 @@ function frame(now) {
   last = now;
 
   game.update(dt);
+  updateDebugOverlay(dt);
   const zoomies = game.power?.type === 'zoomies';
   // Zoomies: the gallop cycle itself goes into overdrive
   const animSpeed = game.speed * (zoomies ? CONFIG.powerups.zoomiesAnimBoost : 1);
