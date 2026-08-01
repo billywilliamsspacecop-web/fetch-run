@@ -306,9 +306,14 @@ function riverRing(bridgeLane, { foam = false } = {}) {
   const g = new THREE.Group();
   const waterMat = new THREE.MeshLambertMaterial({ color: 0x2f7cc4, flatShading: true });
   const step = 0.032;
+  // Depth (Z) is deliberately much larger than the ~1.0-unit gap between
+  // stacked rings (makeRiver's ringStep) — a thin margin here left visible
+  // seams where the grass planet mesh peeked through between rings,
+  // especially near the lane-band edges where the sphere's curvature
+  // shifts each ring slightly. Generous overlap hides that completely.
   for (let a = -RIVER_HALF; a <= RIVER_HALF + 0.001; a += step) {
     const tile = new THREE.Mesh(
-      new THREE.BoxGeometry(R * step + 0.08, foam ? 0.16 : 0.12, 1.05),
+      new THREE.BoxGeometry(R * step + 0.08, foam ? 0.16 : 0.12, 1.7),
       waterMat
     );
     tile.position.set(Math.sin(a) * R, Math.cos(a) * R - R + 0.02, 0);

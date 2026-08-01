@@ -46,6 +46,8 @@ export class Game {
     this.extraLife = false; // steak held (non-stacking)
     this.invulnTimer = 0;   // grace after a steak save
     this.nextWaterAt = Infinity; // spin value that triggers the next river
+    this._riverAtRisk = null;    // grace-window tracking (see river collision)
+    this._offBridgeTime = 0;
     // Squirrel chase state
     this.sqLane = 2;
     this.sqTargetLane = 2;
@@ -253,12 +255,26 @@ export class Game {
         // The river occupies [0, depth] behind its leading edge.
         // Safety uses BOTH the smoothed position and the committed target
         // lane — if the player already tapped the bridge lane, the eased
-        // tween catching up a few frames late must never be fatal.
+        // tween catching up a few frames late must never be fatal. On top
+        // of that, being off-bridge only becomes fatal after a short grace
+        // window (offBridgeGrace) of SUSTAINED wrongness, so a single bad
+        // frame — input lag, animation catch-up — can never insta-kill.
         const overWater = cur > -0.015 && cur < e.depth + 0.015;
         const laneSafe = Math.abs(this.lane - e.bridgeLane) <= 0.6;
         const committedSafe = this.targetLane === e.bridgeLane;
-        const offBridge = !laneSafe && !committedSafe;
-        if (overWater && offBridge && !this._survivesHit(e, 'splash')) return;
+        const offBridge = overWater && !laneSafe && !committedSafe;
+        if (e === this._riverAtRisk) {
+          if (offBridge) this._offBridgeTime += dt;
+          else { this._offBridgeTime = 0; this._riverAtRisk = null; }
+        } else if (offBridge) {
+          this._riverAtRisk = e;
+          this._offBridgeTime = dt;
+        }
+        if (
+          offBridge &&
+          this._offBridgeTime >= CONFIG.water.offBridgeGrace &&
+          !this._survivesHit(e, 'splash')
+        ) return;
         if (cur > e.depth + CONFIG.despawnBehindAngle) this.spawner.remove(e);
         continue;
       } else {
