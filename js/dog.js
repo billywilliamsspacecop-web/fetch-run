@@ -46,12 +46,17 @@ export function buildDog(breedKey = 'gsp', cosmetics = {}) {
   head.position.set(0, 1.08, -0.18);
   dog.add(head);
 
-  // Collar between head and body (cosmetic override or breed default)
+  // Collar (cosmetic override or breed default). The chibi head is huge and
+  // sits almost directly on the body with no real neck gap, so the old
+  // position/radius buried the whole collar inside the overlapping
+  // geometry — invisible regardless of color. Sized and placed to wrap
+  // around the OUTSIDE of that head/body seam instead.
   const collarDef = COSMETICS.collar.find((c) => c.id === cosmetics.collar);
   const collarColor = collarDef?.color ?? breed.collar;
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.06, 10, 22), mat(collarColor));
-  collar.position.set(0, 0.68, -0.14);
-  collar.rotation.x = 1.25;
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.08, 10, 24), mat(collarColor));
+  collar.scale.set(1, 0.82, 1);
+  collar.position.set(0, 0.6, -0.05);
+  collar.rotation.x = 1.42;
   dog.add(collar);
 
   // Muzzle + nose, small and low on the big face

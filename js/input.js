@@ -23,20 +23,28 @@ export class Input {
     localStorage.setItem('fetchrun.scheme', scheme);
   }
 
+  // Tap-zone boundaries: fractions of screen width (0..1) that split the
+  // 5 lanes, computed by main.js from the ACTUAL camera-projected on-screen
+  // position of each lane — not a guessed percentage table. If those ever
+  // drift out of sync (camera change, aspect ratio, lane spacing), taps stop
+  // matching where lanes visually render, which is exactly the bug that
+  // caused "I was on the bridge and died anyway": lanes 0/4 were rendering
+  // partially off-screen while tap zones assumed even 1/5 splits.
+  static DEFAULT_BOUNDARIES = [0.23, 0.415, 0.585, 0.77, 1];
+  zoneBoundaries = Input.DEFAULT_BOUNDARIES;
+
+  setZoneBoundaries(boundaries) {
+    this.zoneBoundaries = boundaries;
+  }
+
   _down(e) {
     this._touchStart = { x: e.clientX, y: e.clientY, t: performance.now() };
   }
 
-  // Outer zones are widest: thumb taps near the screen edge register with the
-  // touch centroid pulled inward, so uniform fifths made lanes 0/4 hard to hit.
-  static ZONE_WIDTHS = [0.23, 0.185, 0.17, 0.185, 0.23];
-
   _laneFromX(x) {
     const f = x / window.innerWidth;
-    let acc = 0;
     for (let i = 0; i < CONFIG.lanes; i++) {
-      acc += Input.ZONE_WIDTHS[i];
-      if (f < acc) return i;
+      if (f < this.zoneBoundaries[i]) return i;
     }
     return CONFIG.lanes - 1;
   }

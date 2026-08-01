@@ -28,11 +28,59 @@ const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerH
 const CAM_POS = new THREE.Vector3(0, R + 7.5, 13.5);
 camera.position.copy(CAM_POS);
 camera.lookAt(0, R + 0.4, 3.0);
+camera.updateProjectionMatrix();
+
+// Lane spacing was a fixed guess (0.06 rad) that put lanes 0 and 4 partially
+// OFF-SCREEN on normal portrait phones — the outermost lanes' obstacles and
+// bridges rendered past the visible edge while gameplay logic (and the tap
+// zones) assumed all 5 were evenly visible. That mismatch between "where a
+// lane visually is" and "where tapping registers" was the real root cause
+// behind every "I was on the bridge and died anyway" report. Fix: derive the
+// lane angle from the ACTUAL camera projection so all 5 always fit on
+// screen with margin, then derive tap zones from that same projection so
+// taps and visuals can never drift apart again.
+function computeLaneLayout() {
+  const _p = new THREE.Vector3();
+  const _axisX = new THREE.Vector3(1, 0, 0);
+  const _axisZ = new THREE.Vector3(0, 0, 1);
+  const screenFracForLane = (lane, laneAngle) => {
+    const alpha = (2 - lane) * laneAngle;
+    _p.set(0, R, 0);
+    _p.applyAxisAngle(_axisX, CONFIG.dogTheta);
+    _p.applyAxisAngle(_axisZ, alpha);
+    const ndc = _p.clone().project(camera);
+    return (ndc.x + 1) / 2;
+  };
+  // Binary-search the lane angle that puts the outermost lane at 94% of
+  // screen width (a small margin so nothing clips at the very edge).
+  let lo = 0.005, hi = 0.15;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (screenFracForLane(4, mid) > 0.94) hi = mid; else lo = mid;
+  }
+  const laneAngle = lo;
+  const laneFracs = [0, 1, 2, 3, 4].map((l) => screenFracForLane(l, laneAngle));
+  // Tap-zone boundary between lane i and i+1 is the midpoint of their
+  // on-screen fractions; the last boundary is just past the visible edge.
+  const zoneBoundaries = [
+    (laneFracs[0] + laneFracs[1]) / 2,
+    (laneFracs[1] + laneFracs[2]) / 2,
+    (laneFracs[2] + laneFracs[3]) / 2,
+    (laneFracs[3] + laneFracs[4]) / 2,
+    1,
+  ];
+  return { laneAngle, zoneBoundaries };
+}
+const { laneAngle, zoneBoundaries } = computeLaneLayout();
+CONFIG.laneAngle = laneAngle;
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // Re-derive tap zones for the new screen size — lane angle stays fixed
+  // once the world is built (obstacles are already placed using it).
+  input.setZoneBoundaries(computeLaneLayout().zoneBoundaries);
 });
 
 // --- world + dog + fx ---
@@ -74,6 +122,7 @@ scene.add(squirrelPivot);
 
 // --- game wiring ---
 const input = new Input();
+input.setZoneBoundaries(zoneBoundaries);
 const ui = new UI(input);
 const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
