@@ -27,6 +27,20 @@ export class Input {
     this._touchStart = { x: e.clientX, y: e.clientY, t: performance.now() };
   }
 
+  // Outer zones are widest: thumb taps near the screen edge register with the
+  // touch centroid pulled inward, so uniform fifths made lanes 0/4 hard to hit.
+  static ZONE_WIDTHS = [0.23, 0.185, 0.17, 0.185, 0.23];
+
+  _laneFromX(x) {
+    const f = x / window.innerWidth;
+    let acc = 0;
+    for (let i = 0; i < CONFIG.lanes; i++) {
+      acc += Input.ZONE_WIDTHS[i];
+      if (f < acc) return i;
+    }
+    return CONFIG.lanes - 1;
+  }
+
   _up(e) {
     if (!this._touchStart) return;
     const dx = e.clientX - this._touchStart.x;
@@ -34,17 +48,17 @@ export class Input {
     const start = this._touchStart;
     this._touchStart = null;
 
-    const isSwipe =
-      Math.abs(dx) >= CONFIG.swipeMinDistance && dt <= CONFIG.swipeMaxTime;
-
     if (this.scheme === 'swipe') {
-      if (isSwipe) this.onLaneShift?.(dx > 0 ? 1 : -1);
+      if (Math.abs(dx) >= CONFIG.swipeMinDistance && dt <= CONFIG.swipeMaxTime) {
+        this.onLaneShift?.(dx > 0 ? 1 : -1);
+      }
       return;
     }
 
-    if (!isSwipe) {
-      const lane = Math.floor((start.x / window.innerWidth) * CONFIG.lanes);
-      this.onLaneRequest?.(Math.max(0, Math.min(CONFIG.lanes - 1, lane)));
+    // Tap mode: any release that didn't travel far is a tap — a smudged tap
+    // with a bit of drift used to be classified as a swipe and dropped.
+    if (Math.abs(dx) < 40) {
+      this.onLaneRequest?.(this._laneFromX(start.x));
     }
   }
 

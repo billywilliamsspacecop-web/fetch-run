@@ -11,17 +11,29 @@ export const CONFIG = {
 
   // Speed in radians of planet rotation per second.
   // Stage system: every stageLength meters is a checkpoint; speed steps up.
-  baseSpeed: 0.22,         // brisk from the first second (+40% per playtest 3)
+  baseSpeed: 0.44,         // fast out of the gate (doubled per playtest 4)
   stageLength: 500,        // meters per stage/checkpoint
-  stageSpeedBump: 0.05,    // speed added at each checkpoint
-  maxSpeed: 0.66,
+  stageSpeedBump: 0.045,   // speed added at each checkpoint
+  maxSpeed: 0.8,
   metersPerRadian: 110,    // score scale: distance = rotation * this
 
   // Obstacle spawning
   spawnBaseInterval: 1.5,  // seconds between spawn rows at base speed
-  spawnMinInterval: 0.55,
+  spawnMinInterval: 0.5,
   doubleSpawnChance: 0.28, // chance a row has 2 obstacles (never blocks all lanes)
   ballChance: 0.45,        // chance a row also drops a tennis ball in a free lane
+
+  // Powerups: rare pickups granting a timed ability
+  powerups: {
+    chance: 0.055,         // per spawn row
+    duration: 7,           // seconds active
+    chillFactor: 0.55,     // world-speed multiplier during Chill Bone
+    magnetLaneDist: 2.6,   // Ball Magnet vacuum reach, in lanes
+    magnetWindow: 0.16,    // and along the travel direction, radians
+  },
+
+  // Rendering
+  maxFPS: 200,             // frame cap; high-refresh displays run uncapped below this
 
   // Dog
   laneChangeTime: 0.13,    // seconds to tween between lanes
@@ -73,9 +85,10 @@ export const PALETTES = [
   { sky: 0xffe3ae, fog: 0xffd9a4, hemi: 1.1, sun: 1.5 },   // dawn
 ];
 
-// Playable dogs. Kona-style GSP first ("The Dog"), golden retriever second.
+// Playable characters. Kona-style GSP first ("The Dog").
 export const BREEDS = {
   gsp: {
+    kind: 'dog',
     label: 'The Dog',
     body: 0xf2ede3,        // white coat
     patches: 0x26211f,     // black patches
@@ -86,8 +99,10 @@ export const BREEDS = {
     collar: 0xc0392b,      // red collar
     tailScale: 0.7,        // docked-ish tail
     fluffyTail: false,
+    bodyScaleX: 0.74,      // athletic GSP build
   },
   golden: {
+    kind: 'dog',
     label: 'Goldie',
     body: 0xd9a441,
     patches: null,
@@ -98,5 +113,20 @@ export const BREEDS = {
     collar: 0x7a4bd6,      // purple collar
     tailScale: 1.25,
     fluffyTail: true,
+    bodyScaleX: 0.85,
+  },
+  cat: {
+    kind: 'cat',
+    label: 'Tux',
+    body: 0x211f24,        // black coat
+    patches: null,
+    head: 0x211f24,
+    muzzle: 0xf4f0e8,      // white muzzle patch
+    ear: 0x1a181c,
+    chest: 0xf4f0e8,       // tuxedo bib
+    collar: 0x2aa8a0,      // teal collar
+    tailScale: 1.0,
+    fluffyTail: false,
+    bodyScaleX: 0.68,      // slinky
   },
 };

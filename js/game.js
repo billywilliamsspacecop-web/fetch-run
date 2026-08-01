@@ -37,6 +37,7 @@ export class Game {
     this.balls = 0;
     this.nearMisses = 0;
     this.deathTimer = 0;
+    this.power = null; // { type: 'zoomies'|'chill'|'magnet', timeLeft }
     this.spawner.clear();
   }
 
@@ -59,6 +60,12 @@ export class Game {
     this._reset();
     this.state = 'running';
     this.ui.showRunning();
+  }
+
+  goHome() {
+    this._reset();
+    this.state = 'menu';
+    this.ui.showMenu();
   }
 
   // ---- update ---------------------------------------------------------
@@ -94,6 +101,13 @@ export class Game {
       CONFIG.baseSpeed + (this.stage - 1) * CONFIG.stageSpeedBump
     );
 
+    // Active powerup timer + effects
+    if (this.power) {
+      this.power.timeLeft -= dt;
+      if (this.power.timeLeft <= 0) this.power = null;
+    }
+    if (this.power?.type === 'chill') this.speed *= CONFIG.powerups.chillFactor;
+
     // Tween dog toward target lane — exponential ease (snappy start, soft
     // arrival) reads far less mechanical than the old linear slide
     const diff = this.targetLane - this.lane;
@@ -118,9 +132,23 @@ export class Game {
       const laneDist = Math.abs(e.lane - this.lane);
 
       if (e.isBall) {
-        if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.6) {
+        // Ball Magnet vacuums from farther lanes and a wider window
+        const magnet = this.power?.type === 'magnet';
+        const reach = magnet ? CONFIG.powerups.magnetLaneDist : 0.6;
+        const window_ = magnet ? CONFIG.powerups.magnetWindow : CONFIG.collectWindowAngle;
+        if (!e.collected && Math.abs(cur) < window_ && laneDist < reach) {
           e.collected = true;
           this.balls++;
+          e.group.getWorldPosition(_v);
+          this.fx?.collect(_v);
+          this.spawner.remove(e);
+          this.ui.updateHUD(this);
+          continue;
+        }
+      } else if (e.isPower) {
+        if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.6) {
+          e.collected = true;
+          this.power = { type: e.ptype, timeLeft: CONFIG.powerups.duration };
           e.group.getWorldPosition(_v);
           this.fx?.collect(_v);
           this.spawner.remove(e);
@@ -133,6 +161,13 @@ export class Game {
         const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
         const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
         if (Math.abs(cur) < hitAng && laneDist < hitLat) {
+          if (this.power?.type === 'zoomies') {
+            // Invincible: plow straight through the obstacle
+            e.group.getWorldPosition(_v);
+            this.fx?.crash(_v);
+            this.spawner.remove(e);
+            continue;
+          }
           this._die();
           return;
         }

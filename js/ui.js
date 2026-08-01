@@ -5,16 +5,28 @@ export class UI {
     this.el = {};
     for (const id of [
       'menu', 'hud', 'death',
-      'menu-best', 'menu-bank', 'scheme-hint', 'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden',
-      'hud-distance', 'hud-balls', 'hud-closecalls', 'stage-banner',
-      'death-distance', 'death-best', 'death-prompt',
+      'menu-best', 'menu-bank', 'scheme-hint',
+      'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden', 'btn-cat',
+      'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'stage-banner',
+      'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
       'd-stage', 'd-time', 'd-speed', 'd-balls', 'd-close',
       'l-runs', 'l-dist', 'l-balls', 'recent-runs',
     ]) {
       this.el[id] = document.getElementById(id);
     }
-    this.onScreenTap = null;   // set by main; menu/death taps land here
-    this.onBreedChange = null; // set by main; rebuilds the dog mesh
+    this.onScreenTap = null;   // set by main; menu taps land here
+    this.onBreedChange = null; // set by main; rebuilds the character mesh
+    this.onRunAgain = null;
+    this.onHome = null;
+
+    this.el['btn-again'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onRunAgain?.();
+    });
+    this.el['btn-home'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onHome?.();
+    });
 
     this.el['btn-tap'].addEventListener('click', (e) => {
       e.stopPropagation();
@@ -32,9 +44,12 @@ export class UI {
       e.stopPropagation();
       this._setBreed('golden');
     });
+    this.el['btn-cat'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._setBreed('cat');
+    });
     this._breedButtons(localStorage.getItem('fetchrun.breed') || 'gsp');
     this.el.menu.addEventListener('click', () => this.onScreenTap?.());
-    this.el.death.addEventListener('click', () => this.onScreenTap?.());
 
     this._setScheme(input.scheme);
     this.showMenu();
@@ -49,6 +64,7 @@ export class UI {
   _breedButtons(breed) {
     this.el['btn-gsp'].classList.toggle('active', breed === 'gsp');
     this.el['btn-golden'].classList.toggle('active', breed === 'golden');
+    this.el['btn-cat'].classList.toggle('active', breed === 'cat');
   }
 
   _setScheme(scheme) {
@@ -133,6 +149,12 @@ export class UI {
     this.el['hud-balls'].textContent = `🎾 ${game.balls}`;
     this.el['hud-closecalls'].textContent =
       game.nearMisses > 0 ? `close calls: ${game.nearMisses}` : '';
+    const p = game.power;
+    this.el['hud-power'].classList.toggle('hidden', !p);
+    if (p) {
+      const label = { zoomies: '🥏 ZOOMIES', chill: '🦴 CHILL', magnet: '🧲 MAGNET' }[p.type];
+      this.el['hud-power'].textContent = `${label} ${Math.ceil(p.timeLeft)}s`;
+    }
   }
 
   showDeath(game) {
@@ -144,7 +166,7 @@ export class UI {
     this.el['d-stage'].textContent = game.stage;
     this.el['d-time'].textContent = `${game.time.toFixed(1)}s`;
     this.el['d-speed'].textContent =
-      `${Math.round(game.speed * 110 * 3.6)} km/h`;
+      `${Math.round(game.speed * 110 * 2.23694)} mph`;
     this.el['d-balls'].textContent = game.balls;
     this.el['d-close'].textContent = game.nearMisses;
 
@@ -158,10 +180,10 @@ export class UI {
       .map((r, i) => `<div class="row${i === 0 ? ' latest' : ''}"><span>${r.d}m</span><b>stage ${r.stage} · 🎾 ${r.balls}</b></div>`)
       .join('');
 
-    this.el['death-prompt'].classList.add('hidden');
+    this.el['death-actions'].classList.add('hidden');
   }
 
   showRestartPrompt() {
-    this.el['death-prompt'].classList.remove('hidden');
+    this.el['death-actions'].classList.remove('hidden');
   }
 }

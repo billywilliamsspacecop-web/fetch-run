@@ -18,6 +18,7 @@
     <div id="hud-distance">0m</div>
     <div id="hud-balls">🎾 0</div>
     <div id="hud-closecalls"></div>
+    <div id="hud-power" class="hidden"></div>
     <div id="stage-banner" class="hidden"></div>
   </div>
 
@@ -28,10 +29,11 @@
     <p id="menu-bank" class="bank hidden"></p>
     <p class="prompt">Tap anywhere to run</p>
     <div class="controls-box">
-      <p class="controls-label">DOG</p>
+      <p class="controls-label">RUNNER</p>
       <div class="controls-row">
         <button id="btn-gsp" class="scheme-btn">THE DOG</button>
         <button id="btn-golden" class="scheme-btn">GOLDIE</button>
+        <button id="btn-cat" class="scheme-btn">TUX</button>
       </div>
     </div>
     <div class="controls-box">
@@ -65,7 +67,10 @@
       <p class="subhead">RECENT RUNS</p>
       <div id="recent-runs" class="recent"></div>
     </div>
-    <p id="death-prompt" class="prompt hidden">Tap to run again</p>
+    <div id="death-actions" class="death-actions hidden">
+      <button id="btn-again" class="action-btn primary">RUN AGAIN</button>
+      <button id="btn-home" class="action-btn">HOME</button>
+    </div>
   </div>
 
   <script type="module" src="js/main.js"></script>

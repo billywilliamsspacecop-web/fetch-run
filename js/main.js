@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG, PALETTES } from './config.js';
-import { buildWorld } from './world.js';
+import { buildWorld, STAGE_TINTS } from './world.js';
 import { buildDog } from './dog.js';
 import { FX } from './fx.js';
 import { Input } from './input.js';
@@ -32,7 +32,7 @@ window.addEventListener('resize', () => {
 });
 
 // --- world + dog + fx ---
-const { planetGroup, clouds, lights } = buildWorld(scene);
+const { planetGroup, clouds, lights, tintables } = buildWorld(scene);
 const fx = new FX(scene);
 
 let dog = buildDog(localStorage.getItem('fetchrun.breed') || 'gsp');
@@ -51,6 +51,8 @@ const input = new Input();
 const ui = new UI(input);
 const game = new Game({ planetGroup, dogPivot, fx }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
+ui.onRunAgain = () => game.handleScreenTap();
+ui.onHome = () => game.goHome();
 ui.onBreedChange = (breedKey) => {
   dogCarrier.remove(dog.group);
   dog = buildDog(breedKey);
@@ -63,8 +65,11 @@ const paletteState = {
   sky: new THREE.Color(PALETTES[0].sky),
   fog: new THREE.Color(PALETTES[0].fog),
 };
+const _tmpColor = new THREE.Color();
 function lerpPalette(dt) {
-  const target = PALETTES[game.state === 'running' ? game.paletteIndex : 0];
+  const idx = game.state === 'running' ? game.paletteIndex : 0;
+  const target = PALETTES[idx];
+  const tint = STAGE_TINTS[idx];
   const k = 1 - Math.exp(-dt * 1.5);
   paletteState.sky.lerp(new THREE.Color(target.sky), k);
   paletteState.fog.lerp(new THREE.Color(target.fog), k);
@@ -72,6 +77,15 @@ function lerpPalette(dt) {
   scene.fog.color.copy(paletteState.fog);
   lights.hemi.intensity += (target.hemi - lights.hemi.intensity) * k;
   lights.sun.intensity += (target.sun - lights.sun.intensity) * k;
+
+  // Environment mood: planet green + tree canopies pulled toward the stage hue
+  tintables.planetMat.color.lerp(_tmpColor.set(tint.planet), k);
+  for (const c of tintables.canopyMats) {
+    const targetC = tint.canopy
+      ? _tmpColor.copy(c.base).lerp(new THREE.Color(tint.canopy), tint.mix)
+      : _tmpColor.copy(c.base);
+    c.mat.color.lerp(targetC, k);
+  }
 }
 
 // --- camera shake on wipeout ---
@@ -83,8 +97,15 @@ let dustTimer = 0;
 const dogWorldPos = new THREE.Vector3();
 
 // --- loop ---
+// Runs at native display refresh (60/120Hz ProMotion etc.) — all motion is
+// dt-based so any rate plays identically. Capped at CONFIG.maxFPS.
+const minFrameMs = 1000 / CONFIG.maxFPS;
 let last = performance.now();
 function frame(now) {
+  if (now - last < minFrameMs) {
+    requestAnimationFrame(frame);
+    return;
+  }
   const dt = Math.min((now - last) / 1000, 0.05); // clamp to avoid tab-switch jumps
   last = now;
 

@@ -21,26 +21,35 @@ export function laneAlpha(laneFloat) {
   return (2 - laneFloat) * CONFIG.laneAngle;
 }
 
+// Canopy materials are collected per-build so main can tint them per stage
+let canopyMats = [];
+
+function canopyLambert(color) {
+  const m = lambert(color);
+  canopyMats.push({ mat: m, base: new THREE.Color(color) });
+  return m;
+}
+
 function makeTree() {
   const g = new THREE.Group();
   const h = 0.7 + Math.random() * 0.5;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, h, 7), lambert(COLORS.trunk));
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, h, 11), lambert(COLORS.trunk));
   trunk.position.y = h / 2;
   g.add(trunk);
   const color = COLORS.canopy[Math.floor(Math.random() * COLORS.canopy.length)];
   if (Math.random() < 0.35) {
     // Pine
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 8), lambert(color));
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 13), canopyLambert(color));
     cone.position.y = h + 0.7;
     g.add(cone);
   } else {
     // Round canopy, 1-2 blobs
     const r1 = 0.55 + Math.random() * 0.35;
-    const c1 = new THREE.Mesh(new THREE.SphereGeometry(r1, 9, 7), lambert(color));
+    const c1 = new THREE.Mesh(new THREE.SphereGeometry(r1, 14, 11), canopyLambert(color));
     c1.position.y = h + r1 * 0.75;
     g.add(c1);
     if (Math.random() < 0.5) {
-      const c2 = new THREE.Mesh(new THREE.SphereGeometry(r1 * 0.6, 8, 6), lambert(color));
+      const c2 = new THREE.Mesh(new THREE.SphereGeometry(r1 * 0.6, 12, 9), canopyLambert(color));
       c2.position.set(0.35, h + r1 * 1.15, 0.1);
       g.add(c2);
     }
@@ -49,7 +58,7 @@ function makeTree() {
       const fruitMat = lambert(Math.random() < 0.5 ? 0xd94f4f : 0xf0a030);
       for (let f = 0; f < 3; f++) {
         const a = Math.random() * Math.PI * 2;
-        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), fruitMat);
+        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 9, 7), fruitMat);
         fruit.position.set(
           Math.cos(a) * r1 * 0.85,
           h + r1 * 0.75 + (Math.random() - 0.3) * r1 * 0.6,
@@ -67,7 +76,7 @@ function makeTree() {
 
 function makeBush() {
   const b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3 + Math.random() * 0.25, 8, 6),
+    new THREE.SphereGeometry(0.3 + Math.random() * 0.25, 12, 9),
     lambert(COLORS.planetDark)
   );
   b.scale.y = 0.7;
@@ -76,12 +85,12 @@ function makeBush() {
 
 function makeFlower() {
   const g = new THREE.Group();
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.25, 5), lambert(0x4f8f3a));
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.25, 8), lambert(0x4f8f3a));
   stem.position.y = 0.12;
   g.add(stem);
   const colors = [0xffffff, 0xffd54f, 0xe57a8a, 0xb08ae5];
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.09, 7, 5),
+    new THREE.SphereGeometry(0.09, 10, 8),
     lambert(colors[Math.floor(Math.random() * colors.length)])
   );
   head.position.y = 0.28;
@@ -95,7 +104,7 @@ function makeCloud() {
   const sizes = [0.9, 0.65, 0.7];
   const offs = [[0, 0, 0], [0.85, -0.1, 0.1], [-0.8, -0.15, -0.05]];
   for (let i = 0; i < 3; i++) {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(sizes[i], 8, 6), m);
+    const s = new THREE.Mesh(new THREE.SphereGeometry(sizes[i], 12, 9), m);
     s.position.set(...offs[i]);
     s.scale.y = 0.65;
     g.add(s);
@@ -107,6 +116,7 @@ function makeCloud() {
 // planetGroup.rotation.x is the spin the game advances each frame; lights are
 // exposed so main can lerp them through the per-stage palettes.
 export function buildWorld(scene) {
+  canopyMats = [];
   scene.background = new THREE.Color(COLORS.sky);
   scene.fog = new THREE.Fog(COLORS.fog, 30, 58);
 
@@ -131,7 +141,7 @@ export function buildWorld(scene) {
   // The globe, with gentle vertex jitter for a handmade low-poly feel.
   // Rotated so the geometry poles sit on the sides — the running path crosses
   // the equator band where the triangles are clean, not the ugly pole fans.
-  const geo = new THREE.SphereGeometry(R, 52, 36);
+  const geo = new THREE.SphereGeometry(R, 72, 48);
   geo.rotateZ(Math.PI / 2);
   const pos = geo.attributes.position;
   const v = new THREE.Vector3();
@@ -225,5 +235,17 @@ export function buildWorld(scene) {
   sun2.lookAt(0, R + 5, 8.6);
   scene.add(sun2);
 
-  return { planetGroup, clouds, lights: { hemi, sun } };
+  return {
+    planetGroup, clouds, lights: { hemi, sun },
+    tintables: { planetMat: planet.material, canopyMats },
+  };
 }
+
+// Per-stage environment moods: planet green + a color the tree canopies are
+// pulled toward (and how strongly). Indexes match PALETTES.
+export const STAGE_TINTS = [
+  { planet: 0x7ec850, canopy: null, mix: 0 },          // sunset: natural
+  { planet: 0x6db54e, canopy: 0xc87bd8, mix: 0.22 },   // dusk: violet wash
+  { planet: 0x46704f, canopy: 0x3a4d8f, mix: 0.45 },   // night: moonlit blues
+  { planet: 0x8fd05a, canopy: 0xffd98a, mix: 0.3 },    // dawn: gold-lit
+];
