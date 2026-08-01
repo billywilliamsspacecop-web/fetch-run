@@ -25,6 +25,7 @@
     <h1>FETCH RUN</h1>
     <p class="subtitle">(working title)</p>
     <p id="menu-best" class="best hidden"></p>
+    <p id="menu-bank" class="bank hidden"></p>
     <p class="prompt">Tap anywhere to run</p>
     <div class="controls-box">
       <p class="controls-label">DOG</p>
@@ -44,10 +45,26 @@
   </div>
 
   <div id="death" class="overlay hidden">
-    <h2>WIPEOUT!</h2>
-    <p id="death-distance" class="big-distance"></p>
-    <p id="death-best" class="best"></p>
-    <p id="death-stats" class="stats"></p>
+    <div class="card">
+      <h2>WIPEOUT!</h2>
+      <p id="death-distance" class="big-distance"></p>
+      <p id="death-best" class="best"></p>
+      <div class="stat-rows">
+        <div class="row"><span>stage</span><b id="d-stage"></b></div>
+        <div class="row"><span>time</span><b id="d-time"></b></div>
+        <div class="row"><span>top speed</span><b id="d-speed"></b></div>
+        <div class="row"><span>🎾 collected</span><b id="d-balls"></b></div>
+        <div class="row"><span>close calls</span><b id="d-close"></b></div>
+      </div>
+      <p class="subhead">LIFETIME</p>
+      <div class="stat-rows small">
+        <div class="row"><span>runs</span><b id="l-runs"></b></div>
+        <div class="row"><span>distance</span><b id="l-dist"></b></div>
+        <div class="row"><span>🎾 banked</span><b id="l-balls"></b></div>
+      </div>
+      <p class="subhead">RECENT RUNS</p>
+      <div id="recent-runs" class="recent"></div>
+    </div>
     <p id="death-prompt" class="prompt hidden">Tap to run again</p>
   </div>
 

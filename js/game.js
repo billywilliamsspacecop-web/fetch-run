@@ -1,12 +1,16 @@
-import { CONFIG } from './config.js';
+import { Vector3 } from 'three';
+import { CONFIG, PALETTES } from './config.js';
 import { laneAlpha } from './world.js';
 import { Spawner } from './obstacles.js';
 
+const _v = new Vector3();
+
 // Game states: 'menu' -> 'running' -> 'dead' -> 'running' ...
 export class Game {
-  constructor({ planetGroup, dogPivot }, input, ui) {
+  constructor({ planetGroup, dogPivot, fx }, input, ui) {
     this.planetGroup = planetGroup;
     this.dogPivot = dogPivot;
+    this.fx = fx;
     this.input = input;
     this.ui = ui;
     this.spawner = new Spawner(planetGroup);
@@ -90,10 +94,11 @@ export class Game {
       CONFIG.baseSpeed + (this.stage - 1) * CONFIG.stageSpeedBump
     );
 
-    // Tween dog toward target lane; lateral position is a rotation on the globe
+    // Tween dog toward target lane — exponential ease (snappy start, soft
+    // arrival) reads far less mechanical than the old linear slide
     const diff = this.targetLane - this.lane;
-    const maxStep = dt / CONFIG.laneChangeTime;
-    this.lane += Math.abs(diff) <= maxStep ? diff : Math.sign(diff) * maxStep;
+    const k = 1 - Math.exp(-dt / (CONFIG.laneChangeTime * 0.45));
+    this.lane += Math.abs(diff) < 0.001 ? diff : diff * k;
     this.dogPivot.rotation.z = laneAlpha(this.lane);
 
     // Spawning
@@ -116,6 +121,8 @@ export class Game {
         if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.6) {
           e.collected = true;
           this.balls++;
+          e.group.getWorldPosition(_v);
+          this.fx?.collect(_v);
           this.spawner.remove(e);
           this.ui.updateHUD(this);
           continue;
@@ -142,15 +149,23 @@ export class Game {
     this.ui.updateHUD(this);
   }
 
+  // Current palette index for the sky mood (main lerps toward it each frame)
+  get paletteIndex() {
+    return (this.stage - 1) % PALETTES.length;
+  }
+
   _die() {
     this.state = 'dead';
     this.deathTimer = 0;
+    this.dogPivot.children[0]?.getWorldPosition(_v);
+    this.fx?.crash(_v);
     const d = Math.floor(this.distance);
     this.isNewBest = d > this.best && d > 0;
     if (this.isNewBest) {
       this.best = d;
       localStorage.setItem('fetchrun.best', String(d));
     }
+    this.ui.recordRun(this);
     this.ui.showDeath(this);
   }
 }

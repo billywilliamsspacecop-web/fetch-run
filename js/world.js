@@ -103,8 +103,9 @@ function makeCloud() {
   return g;
 }
 
-// Builds the whole static world. Returns { planetGroup, clouds, shadow } —
-// planetGroup.rotation.x is the spin the game advances each frame.
+// Builds the whole static world. Returns { planetGroup, clouds, lights } —
+// planetGroup.rotation.x is the spin the game advances each frame; lights are
+// exposed so main can lerp them through the per-stage palettes.
 export function buildWorld(scene) {
   scene.background = new THREE.Color(COLORS.sky);
   scene.fog = new THREE.Fog(COLORS.fog, 30, 58);
@@ -112,7 +113,16 @@ export function buildWorld(scene) {
   const hemi = new THREE.HemisphereLight(0xfff2dd, 0x6a9b4a, 1.05);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
-  sun.position.set(6, 14, 6);
+  // High and off to the side so shadows fall across the play area
+  sun.position.set(14, 38, 16);
+  sun.target.position.set(0, R - 2, 5);
+  scene.add(sun.target);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  const cam = sun.shadow.camera;
+  cam.left = -16; cam.right = 16; cam.top = 16; cam.bottom = -16;
+  cam.near = 5; cam.far = 80;
+  sun.shadow.bias = -0.002;
   scene.add(sun);
 
   const planetGroup = new THREE.Group();
@@ -138,6 +148,7 @@ export function buildWorld(scene) {
   }
   geo.computeVertexNormals();
   const planet = new THREE.Mesh(geo, lambert(COLORS.planet));
+  planet.receiveShadow = true;
   planetGroup.add(planet);
 
   // Scatter scenery outside the lane band so the running path stays clear
@@ -147,7 +158,9 @@ export function buildWorld(scene) {
       const theta = Math.random() * Math.PI * 2;
       const side = Math.random() < 0.5 ? -1 : 1;
       const alpha = side * (minAlpha + Math.random() * (maxAlpha - minAlpha));
-      planetGroup.add(surfacePivot(theta, alpha, make()));
+      const obj = make();
+      obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      planetGroup.add(surfacePivot(theta, alpha, obj));
     }
   };
   // Portrait view only shows ~±0.4 rad of lateral surface, so keep scenery close
@@ -212,12 +225,5 @@ export function buildWorld(scene) {
   sun2.lookAt(0, R + 5, 8.6);
   scene.add(sun2);
 
-  // Soft blob shadow under the dog
-  const shadow = new THREE.Mesh(
-    new THREE.CircleGeometry(0.62, 20),
-    new THREE.MeshBasicMaterial({ color: 0x2e5220, transparent: true, opacity: 0.35 })
-  );
-  shadow.rotation.x = -Math.PI / 2;
-
-  return { planetGroup, clouds, shadow };
+  return { planetGroup, clouds, lights: { hemi, sun } };
 }

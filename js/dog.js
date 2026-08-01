@@ -109,15 +109,27 @@ export function buildDog(breedKey = 'gsp') {
   tail.rotation.x = 0.5;
   tailPivot.add(tail);
   if (breed.fluffyTail) {
-    const plume = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6), mat(breed.chest));
-    plume.scale.set(0.8, 1.4, 0.8);
-    plume.position.set(0, 0.42, -0.12);
-    tailPivot.add(plume);
+    // Feathered plume: overlapping tufts along an arc that curls up over the
+    // back, tapering to a lighter tip — reads like a golden's flag tail
+    const tuftSpecs = [
+      { r: 0.15, pos: [0, 0.2, 0.06], sc: [0.85, 1.1, 0.9], c: breed.ear },
+      { r: 0.16, pos: [0.02, 0.34, -0.02], sc: [0.9, 1.15, 0.95], c: breed.body },
+      { r: 0.14, pos: [-0.02, 0.47, -0.1], sc: [0.85, 1.1, 0.9], c: breed.body },
+      { r: 0.11, pos: [0, 0.58, -0.2], sc: [0.8, 1.05, 0.85], c: breed.chest },
+      { r: 0.08, pos: [0.01, 0.65, -0.3], sc: [0.75, 1, 0.8], c: breed.chest },
+    ];
+    for (const t of tuftSpecs) {
+      const tuft = new THREE.Mesh(new THREE.SphereGeometry(t.r, 8, 6), mat(t.c));
+      tuft.position.set(...t.pos);
+      tuft.scale.set(...t.sc);
+      tuft.rotation.x = -0.4;
+      tailPivot.add(tuft);
+    }
   }
   tailPivot.scale.setScalar(breed.tailScale);
   dog.add(tailPivot);
 
-  const parts = { body, head, muzzle, nose, legs, tailPivot, earL, earR };
+  const parts = { body, head, muzzle, nose, legs, tailPivot, earL, earR, tongue };
 
   // t: seconds, speed: rad/s planet spin, state: 'menu'|'running'|'dead',
   // lean: lane-change velocity (targetLane - lane), for banking into moves.
@@ -127,28 +139,41 @@ export function buildDog(breedKey = 'gsp') {
       dog.position.y = -0.25;
       return;
     }
-    // Full-send GSP gallop: fast cycle, big leg swing, body stretch + pitch
-    const freq = 9 + speed * 26;
+    const freq = 8.5 + speed * 24;
     const phase = t * freq;
-    const s = Math.sin(phase);
 
-    // Rotary gallop: front pair leads, rear pair drives half a cycle later
-    parts.legs[0].rotation.x = Math.sin(phase) * 1.05;
-    parts.legs[1].rotation.x = Math.sin(phase + 0.35) * 1.05;
-    parts.legs[2].rotation.x = -Math.sin(phase + 2.9) * 1.1;
-    parts.legs[3].rotation.x = -Math.sin(phase + 3.25) * 1.1;
+    // Rotary gallop with uneven leg phasing (real gallops aren't symmetric):
+    // fronts lead close together, rears drive ~half a cycle later, each leg
+    // with its own amplitude so no two ever mirror exactly.
+    parts.legs[0].rotation.x = Math.sin(phase) * 1.0;
+    parts.legs[1].rotation.x = Math.sin(phase + 0.55) * 0.92;
+    parts.legs[2].rotation.x = -Math.sin(phase + 2.75) * 1.12;
+    parts.legs[3].rotation.x = -Math.sin(phase + 3.35) * 1.02;
 
-    // Bound: body rises + pitches + stretches through the stride
-    dog.position.y = Math.abs(s) * 0.16;
-    dog.rotation.x = s * 0.09;
-    dog.rotation.z = THREE.MathUtils.clamp(-lean * 0.4, -0.45, 0.45);
-    parts.body.scale.set(0.85, 0.8 - s * 0.04, 1.25 + s * 0.09);
-    parts.head.position.y = 1.12 + s * 0.045;
+    // Bound with suspension: sharp push-off, floaty hang at the top
+    const hop = Math.pow(0.5 + 0.5 * Math.sin(phase + 0.3), 1.5);
+    dog.position.y = hop * 0.2;
+    // Pitch leads the bounce (nose dips into landing, lifts on push-off)
+    dog.rotation.x = Math.cos(phase + 0.3) * 0.1;
+    // Bank into lane changes + a whisper of body roll at half frequency
+    dog.rotation.z =
+      THREE.MathUtils.clamp(-lean * 0.4, -0.45, 0.45) + Math.sin(phase * 0.5 + 1.2) * 0.03;
+    // Stretch peaks mid-air, squash on landing — offset from the hop
+    const stretch = Math.sin(phase + 0.9);
+    parts.body.scale.set(0.85, 0.8 - stretch * 0.045, 1.25 + stretch * 0.11);
+    // Head counter-bobs with a lag so it floats instead of pistoning
+    parts.head.position.y = 1.12 - Math.sin(phase - 0.4) * 0.05;
+    parts.head.rotation.x = Math.sin(phase + 0.1) * 0.07;
 
-    parts.tailPivot.rotation.z = Math.sin(phase * 0.95) * 0.7;
-    parts.earL.rotation.z = 0.35 + Math.sin(phase + 0.4) * 0.28;
-    parts.earR.rotation.z = -0.35 - Math.sin(phase + 0.6) * 0.28;
+    // Secondary motion at unrelated frequencies — kills the metronome feel
+    parts.tailPivot.rotation.z = Math.sin(phase * 0.9) * 0.55 + Math.sin(phase * 1.7 + 1) * 0.2;
+    parts.earL.rotation.z = 0.35 + Math.sin(phase + 0.4) * 0.3 + Math.sin(phase * 1.31) * 0.08;
+    parts.earR.rotation.z = -0.35 - Math.sin(phase + 0.7) * 0.3 - Math.sin(phase * 1.19) * 0.08;
+    parts.tongue.rotation.x = 0.4 + Math.sin(phase * 0.93 + 0.5) * 0.12;
   }
+
+  // Shadows: every part of the pup casts
+  dog.traverse((o) => { if (o.isMesh) o.castShadow = true; });
 
   return { group: dog, animate };
 }

@@ -177,6 +177,9 @@ export class Spawner {
   }
 
   _add(group, lane, theta0, isBall, hitbox) {
+    group.traverse((o) => {
+      if (o.isMesh && !o.material.transparent) o.castShadow = true;
+    });
     const pivot = surfacePivot(theta0, laneAlpha(lane), group);
     this.planetGroup.add(pivot);
     this.entities.push({ pivot, group, lane, theta0, isBall, collected: false, hitbox });

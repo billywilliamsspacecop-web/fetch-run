@@ -11,10 +11,10 @@ export const CONFIG = {
 
   // Speed in radians of planet rotation per second.
   // Stage system: every stageLength meters is a checkpoint; speed steps up.
-  baseSpeed: 0.16,         // stage 1 stays chill
+  baseSpeed: 0.22,         // brisk from the first second (+40% per playtest 3)
   stageLength: 500,        // meters per stage/checkpoint
   stageSpeedBump: 0.05,    // speed added at each checkpoint
-  maxSpeed: 0.62,
+  maxSpeed: 0.66,
   metersPerRadian: 110,    // score scale: distance = rotation * this
 
   // Obstacle spawning
@@ -63,6 +63,15 @@ export const COLORS = {
   ball: 0xd7f25a,
   ballSeam: 0xf7f7f0,
 };
+
+// Per-stage sky moods, cycled as stages advance: sunset → dusk → night → dawn.
+// Colors lerp smoothly over a couple seconds at each checkpoint.
+export const PALETTES = [
+  { sky: 0xffd29e, fog: 0xffc78f, hemi: 1.05, sun: 1.6 },  // sunset
+  { sky: 0xd493c1, fog: 0xc887b8, hemi: 0.9, sun: 1.25 },  // dusk
+  { sky: 0x2e3a6e, fog: 0x2a3260, hemi: 0.6, sun: 0.8 },   // night
+  { sky: 0xffe3ae, fog: 0xffd9a4, hemi: 1.1, sun: 1.5 },   // dawn
+];
 
 // Playable dogs. Kona-style GSP first ("The Dog"), golden retriever second.
 export const BREEDS = {

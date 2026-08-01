@@ -5,9 +5,11 @@ export class UI {
     this.el = {};
     for (const id of [
       'menu', 'hud', 'death',
-      'menu-best', 'scheme-hint', 'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden',
+      'menu-best', 'menu-bank', 'scheme-hint', 'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden',
       'hud-distance', 'hud-balls', 'hud-closecalls', 'stage-banner',
-      'death-distance', 'death-best', 'death-stats', 'death-prompt',
+      'death-distance', 'death-best', 'death-prompt',
+      'd-stage', 'd-time', 'd-speed', 'd-balls', 'd-close',
+      'l-runs', 'l-dist', 'l-balls', 'recent-runs',
     ]) {
       this.el[id] = document.getElementById(id);
     }
@@ -65,10 +67,44 @@ export class UI {
     }
   }
 
+  // ---- persistent stats ------------------------------------------------
+
+  _loadJSON(key, fallback) {
+    try {
+      return JSON.parse(localStorage.getItem(key)) ?? fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  stats() {
+    return this._loadJSON('fetchrun.stats', {
+      runs: 0, totalDist: 0, totalBalls: 0, bestCloseCalls: 0,
+    });
+  }
+
+  recordRun(game) {
+    const s = this.stats();
+    s.runs += 1;
+    s.totalDist += Math.floor(game.distance);
+    s.totalBalls += game.balls;
+    s.bestCloseCalls = Math.max(s.bestCloseCalls, game.nearMisses);
+    localStorage.setItem('fetchrun.stats', JSON.stringify(s));
+
+    const recent = this._loadJSON('fetchrun.recent', []);
+    recent.unshift({ d: Math.floor(game.distance), stage: game.stage, balls: game.balls });
+    localStorage.setItem('fetchrun.recent', JSON.stringify(recent.slice(0, 5)));
+  }
+
+  // ---- screens ---------------------------------------------------------
+
   showMenu(best = Number(localStorage.getItem('fetchrun.best') || 0)) {
     this._show('menu');
     this.el['menu-best'].classList.toggle('hidden', best <= 0);
     this.el['menu-best'].textContent = `Best: ${best}m`;
+    const bank = this.stats().totalBalls;
+    this.el['menu-bank'].classList.toggle('hidden', bank <= 0);
+    this.el['menu-bank'].textContent = `🎾 ${bank} banked`;
   }
 
   showRunning() {
@@ -85,6 +121,11 @@ export class UI {
     el.style.animation = 'none';
     void el.offsetWidth;
     el.style.animation = '';
+    // Quick white checkpoint flash
+    const flash = document.createElement('div');
+    flash.id = 'flash';
+    document.body.appendChild(flash);
+    setTimeout(() => flash.remove(), 500);
   }
 
   updateHUD(game) {
@@ -99,8 +140,24 @@ export class UI {
     const d = Math.floor(game.distance);
     this.el['death-distance'].textContent = `${d}m`;
     this.el['death-best'].textContent = game.isNewBest ? 'NEW BEST!' : `best: ${game.best}m`;
-    this.el['death-stats'].textContent =
-      `stage ${game.stage}   time: ${game.time.toFixed(1)}s   🎾 ${game.balls}   close calls: ${game.nearMisses}`;
+
+    this.el['d-stage'].textContent = game.stage;
+    this.el['d-time'].textContent = `${game.time.toFixed(1)}s`;
+    this.el['d-speed'].textContent =
+      `${Math.round(game.speed * 110 * 3.6)} km/h`;
+    this.el['d-balls'].textContent = game.balls;
+    this.el['d-close'].textContent = game.nearMisses;
+
+    const s = this.stats();
+    this.el['l-runs'].textContent = s.runs;
+    this.el['l-dist'].textContent = `${s.totalDist.toLocaleString()}m`;
+    this.el['l-balls'].textContent = s.totalBalls;
+
+    const recent = this._loadJSON('fetchrun.recent', []);
+    this.el['recent-runs'].innerHTML = recent
+      .map((r, i) => `<div class="row${i === 0 ? ' latest' : ''}"><span>${r.d}m</span><b>stage ${r.stage} · 🎾 ${r.balls}</b></div>`)
+      .join('');
+
     this.el['death-prompt'].classList.add('hidden');
   }
 
