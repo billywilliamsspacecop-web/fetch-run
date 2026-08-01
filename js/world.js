@@ -128,7 +128,7 @@ export function buildWorld(scene) {
   sun.target.position.set(0, R - 2, 5);
   scene.add(sun.target);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.mapSize.set(2048, 2048);
   const cam = sun.shadow.camera;
   cam.left = -16; cam.right = 16; cam.top = 16; cam.bottom = -16;
   cam.near = 5; cam.far = 80;

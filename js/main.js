@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { CONFIG, PALETTES } from './config.js';
 import { buildWorld, STAGE_TINTS } from './world.js';
 import { buildDog } from './dog.js';
-import { buildSquirrel } from './squirrel.js';
+import { buildChase } from './squirrel.js';
 import { FX } from './fx.js';
 import { Input } from './input.js';
 import { UI } from './ui.js';
@@ -16,6 +16,9 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Filmic tone mapping: richer color, softer highlights — pushes the look
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 document.getElementById('app').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -36,7 +39,19 @@ window.addEventListener('resize', () => {
 const { planetGroup, clouds, lights, tintables } = buildWorld(scene);
 const fx = new FX(scene);
 
-let dog = buildDog(localStorage.getItem('fetchrun.breed') || 'gsp');
+// Cool fill light from the shade side keeps the dark GSP/cat readable
+const fill = new THREE.DirectionalLight(0xa8c8ff, 0.4);
+fill.position.set(-10, 16, 10);
+scene.add(fill);
+
+const getEquip = () => {
+  try {
+    return JSON.parse(localStorage.getItem('fetchrun.equip')) ?? {};
+  } catch {
+    return {};
+  }
+};
+let dog = buildDog(localStorage.getItem('fetchrun.breed') || 'gsp', getEquip());
 const dogPivot = new THREE.Group(); // rotation.z = lateral lane position
 dogPivot.rotation.x = CONFIG.dogTheta; // down the near side of the globe
 // Carrier lifts the dog to the surface; the run-cycle bob animates position.y
@@ -47,8 +62,8 @@ dogCarrier.add(dog.group);
 dogPivot.add(dogCarrier);
 scene.add(dogPivot);
 
-// The squirrel: the chased quarry, running near the crest (game drives its pivot)
-const squirrel = buildSquirrel();
+// The quarry: whatever's being chased, running near the crest (game drives the pivot)
+let squirrel = buildChase(getEquip().chase || 'squirrel');
 const squirrelPivot = new THREE.Group();
 const squirrelCarrier = new THREE.Group();
 squirrelCarrier.position.y = R + 0.05;
@@ -66,8 +81,16 @@ ui.onRunAgain = () => game.handleScreenTap();
 ui.onHome = () => game.goHome();
 ui.onBreedChange = (breedKey) => {
   dogCarrier.remove(dog.group);
-  dog = buildDog(breedKey);
+  dog = buildDog(breedKey, getEquip());
   dogCarrier.add(dog.group);
+};
+ui.onCosmeticsChange = (equip) => {
+  dogCarrier.remove(dog.group);
+  dog = buildDog(localStorage.getItem('fetchrun.breed') || 'gsp', equip);
+  dogCarrier.add(dog.group);
+  squirrelCarrier.remove(squirrel.group);
+  squirrel = buildChase(equip.chase || 'squirrel');
+  squirrelCarrier.add(squirrel.group);
 };
 window.__game = game; // debug/test handle
 

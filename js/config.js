@@ -33,11 +33,13 @@ export const CONFIG = {
     zoomiesAnimBoost: 1.7, // gallop animation speed multiplier during Zoomies
   },
 
-  // River event: full-width water, one bridge lane — miss it and SPLASH
-  river: {
-    chance: 0.025,         // per-row odds (x10 in game) once off cooldown
-    minStage: 2,
-    cooldown: 14,          // seconds between rivers minimum
+  // Water stages: recurring themed stage of alternating land + long rivers.
+  // A stage is a water stage when stage >= firstAt and (stage - firstAt) % every == 0.
+  water: {
+    firstAt: 4,
+    every: 8,
+    riverDepth: 0.42,      // radians of water along the travel direction
+    spacing: 0.95,         // radians from one river front to the next
   },
 
   // Intro chase cutscene
@@ -101,6 +103,28 @@ export const PALETTES = [
   { sky: 0x2e3a6e, fog: 0x2a3260, hemi: 0.6, sun: 0.8 },   // night
   { sky: 0xffe3ae, fog: 0xffd9a4, hemi: 1.1, sun: 1.5 },   // dawn
 ];
+
+// Shop: tennis balls buy cosmetics + chase targets. 'default' collar keeps
+// the breed's own color. Owned/equipped state persists in localStorage.
+export const COSMETICS = {
+  collar: [
+    { id: 'default', label: 'Classic', price: 0 },
+    { id: 'sky', label: 'Sky', price: 120, color: 0x3aa8e0 },
+    { id: 'gold', label: 'Gold', price: 300, color: 0xf5c842 },
+    { id: 'neon', label: 'Neon', price: 500, color: 0x7cfc4f },
+  ],
+  hat: [
+    { id: 'none', label: 'No Hat', price: 0 },
+    { id: 'party', label: 'Party Hat', price: 200 },
+    { id: 'propeller', label: 'Propeller', price: 350 },
+    { id: 'crown', label: 'Crown', price: 600 },
+  ],
+  chase: [
+    { id: 'squirrel', label: 'Squirrel', price: 0 },
+    { id: 'butterfly', label: 'Butterfly', price: 250 },
+    { id: 'rabbit', label: 'Rabbit', price: 400 },
+  ],
+};
 
 // Playable characters. Kona-style GSP first ("The Dog").
 export const BREEDS = {

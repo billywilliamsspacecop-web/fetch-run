@@ -1,11 +1,15 @@
-// DOM overlay screens: menu, HUD, death. Pure presentation.
+import { COSMETICS } from './config.js';
+
+// DOM overlay screens: menu, HUD, death, shop. Pure presentation + the
+// tennis-ball economy (bank, unlocks, equipped cosmetics in localStorage).
 export class UI {
   constructor(input) {
     this.input = input;
     this.el = {};
     for (const id of [
-      'menu', 'hud', 'death', 'intro-hint',
+      'menu', 'hud', 'death', 'intro-hint', 'shop',
       'menu-best', 'menu-bank', 'scheme-hint',
+      'btn-shop', 'btn-shop-close', 'shop-bank', 'shop-items',
       'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden', 'btn-cat',
       'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'hud-life', 'stage-banner',
       'death-title', 'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
@@ -16,8 +20,30 @@ export class UI {
     }
     this.onScreenTap = null;   // set by main; menu taps land here
     this.onBreedChange = null; // set by main; rebuilds the character mesh
+    this.onCosmeticsChange = null; // set by main; re-dresses runner / swaps chase
     this.onRunAgain = null;
     this.onHome = null;
+
+    // Migrate: spendable bank starts from lifetime balls collected pre-shop
+    if (localStorage.getItem('fetchrun.bank') === null) {
+      localStorage.setItem('fetchrun.bank', String(this.stats().totalBalls));
+    }
+
+    this.el['btn-shop'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.openShop();
+    });
+    this.el['btn-shop-close'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.el.shop.classList.add('hidden');
+      this.showMenu();
+    });
+    this.el['shop-items'].addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-cat]');
+      if (!chip) return;
+      e.stopPropagation();
+      this._shopTap(chip.dataset.cat, chip.dataset.id);
+    });
 
     this.el['btn-again'].addEventListener('click', (e) => {
       e.stopPropagation();
@@ -111,21 +137,91 @@ export class UI {
     s.totalBalls += game.balls;
     s.bestCloseCalls = Math.max(s.bestCloseCalls, game.nearMisses);
     localStorage.setItem('fetchrun.stats', JSON.stringify(s));
+    this._setBank(this.bank() + game.balls);
 
     const recent = this._loadJSON('fetchrun.recent', []);
     recent.unshift({ d: Math.floor(game.distance), stage: game.stage, balls: game.balls });
     localStorage.setItem('fetchrun.recent', JSON.stringify(recent.slice(0, 5)));
   }
 
+  // ---- tennis-ball economy --------------------------------------------
+
+  bank() {
+    return Number(localStorage.getItem('fetchrun.bank') || 0);
+  }
+
+  _setBank(n) {
+    localStorage.setItem('fetchrun.bank', String(n));
+  }
+
+  unlocks() {
+    return this._loadJSON('fetchrun.unlocks', {
+      collar: ['default'], hat: ['none'], chase: ['squirrel'],
+    });
+  }
+
+  equip() {
+    return this._loadJSON('fetchrun.equip', {
+      collar: 'default', hat: 'none', chase: 'squirrel',
+    });
+  }
+
+  openShop() {
+    for (const id of ['menu', 'hud', 'death', 'intro-hint']) {
+      this.el[id].classList.add('hidden');
+    }
+    this.el.shop.classList.remove('hidden');
+    this._renderShop();
+  }
+
+  _shopTap(cat, id) {
+    const item = COSMETICS[cat].find((i) => i.id === id);
+    if (!item) return;
+    const unlocks = this.unlocks();
+    const equip = this.equip();
+    if (!unlocks[cat].includes(id)) {
+      if (this.bank() < item.price) return; // can't afford — chip shows price
+      this._setBank(this.bank() - item.price);
+      unlocks[cat].push(id);
+      localStorage.setItem('fetchrun.unlocks', JSON.stringify(unlocks));
+    }
+    equip[cat] = id;
+    localStorage.setItem('fetchrun.equip', JSON.stringify(equip));
+    this._renderShop();
+    this.onCosmeticsChange?.(equip);
+  }
+
+  _renderShop() {
+    this.el['shop-bank'].textContent = `🎾 ${this.bank()}`;
+    const unlocks = this.unlocks();
+    const equip = this.equip();
+    const labels = { collar: 'COLLARS', hat: 'HATS', chase: 'CHASE' };
+    this.el['shop-items'].innerHTML = Object.entries(COSMETICS)
+      .map(([cat, items]) => {
+        const chips = items
+          .map((item) => {
+            const owned = unlocks[cat].includes(item.id);
+            const equipped = equip[cat] === item.id;
+            const cls = `shop-chip${equipped ? ' equipped' : owned ? ' owned' : ''}${!owned && this.bank() < item.price ? ' locked' : ''}`;
+            const sub = equipped ? 'EQUIPPED' : owned ? 'EQUIP' : `🎾 ${item.price}`;
+            return `<button class="${cls}" data-cat="${cat}" data-id="${item.id}">${item.label}<span>${sub}</span></button>`;
+          })
+          .join('');
+        return `<p class="subhead">${labels[cat]}</p><div class="shop-row">${chips}</div>`;
+      })
+      .join('');
+  }
+
   // ---- screens ---------------------------------------------------------
 
   showMenu(best = Number(localStorage.getItem('fetchrun.best') || 0)) {
     this._show('menu');
+    this.el.shop.classList.add('hidden');
     this.el['menu-best'].classList.toggle('hidden', best <= 0);
     this.el['menu-best'].textContent = `Best: ${best}m`;
-    const bank = this.stats().totalBalls;
+    const bank = this.bank();
     this.el['menu-bank'].classList.toggle('hidden', bank <= 0);
-    this.el['menu-bank'].textContent = `🎾 ${bank} banked`;
+    this.el['menu-bank'].textContent = `🎾 ${bank} to spend`;
   }
 
   showRunning() {
@@ -134,9 +230,9 @@ export class UI {
     this.el['stage-banner'].classList.add('hidden');
   }
 
-  showStageBanner(stage) {
+  showStageBanner(stage, isWater = false) {
     const el = this.el['stage-banner'];
-    el.textContent = `STAGE ${stage}`;
+    el.textContent = isWater ? `🌊 STAGE ${stage} 🌊` : `STAGE ${stage}`;
     el.classList.remove('hidden');
     // Restart the pop animation
     el.style.animation = 'none';

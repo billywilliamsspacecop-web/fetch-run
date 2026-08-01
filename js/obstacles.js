@@ -10,48 +10,83 @@ const lambert = (color, opts = {}) =>
 
 function makeGnome() {
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.36, 0.55, 14), lambert(COLORS.gnomeBody));
-  body.position.y = 0.28;
+  // Robe with a belt, boots poking out underneath
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.38, 0.55, 14), lambert(COLORS.gnomeBody));
+  body.position.y = 0.32;
   g.add(body);
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(0.335, 0.35, 0.08, 14), lambert(0x4a3220));
+  belt.position.y = 0.24;
+  g.add(belt);
+  const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.07, 0.03), lambert(0xf5c842));
+  buckle.position.set(0, 0.24, 0.34);
+  g.add(buckle);
+  for (const side of [-1, 1]) {
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.09, 0.2), lambert(0x2f2a26));
+    boot.position.set(side * 0.12, 0.045, 0.06);
+    g.add(boot);
+  }
 
-  // Arms hugging the belly
-  const armGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.3, 10);
+  // Arms with mitten hands folded on the belly
+  const armGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.28, 10);
   for (const side of [-1, 1]) {
     const arm = new THREE.Mesh(armGeo, lambert(COLORS.gnomeArms));
-    arm.position.set(side * 0.28, 0.38, 0.08);
-    arm.rotation.z = side * 0.9;
-    arm.rotation.x = -0.4;
+    arm.position.set(side * 0.27, 0.42, 0.1);
+    arm.rotation.z = side * 0.95;
+    arm.rotation.x = -0.45;
     g.add(arm);
+    const mitt = new THREE.Mesh(new THREE.SphereGeometry(0.055, 9, 7), lambert(0x6a8f6a));
+    mitt.position.set(side * 0.12, 0.35, 0.24);
+    g.add(mitt);
   }
 
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 11), lambert(COLORS.gnomeSkin));
-  head.position.y = 0.68;
+  head.position.y = 0.72;
   g.add(head);
 
-  // Face toward the camera: beard, nose, eyes
-  const beard = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 9), lambert(COLORS.gnomeBeard));
-  beard.scale.set(1, 0.85, 0.7);
-  beard.position.set(0, 0.56, 0.12);
-  g.add(beard);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), lambert(0xe0a37c));
-  nose.position.set(0, 0.68, 0.2);
-  g.add(nose);
-  const eyeGeo = new THREE.SphereGeometry(0.028, 9, 7);
-  const eyeMat = lambert(0x2b2323);
+  // The face: layered beard, mustache, cherry nose, rosy cheeks, bushy brows
+  const beardBack = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 9), lambert(COLORS.gnomeBeard));
+  beardBack.scale.set(1, 1.05, 0.7);
+  beardBack.position.set(0, 0.56, 0.1);
+  g.add(beardBack);
+  const beardTip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.22, 10), lambert(COLORS.gnomeBeard));
+  beardTip.rotation.x = Math.PI;
+  beardTip.position.set(0, 0.4, 0.16);
+  g.add(beardTip);
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(eyeGeo, eyeMat);
-    eye.position.set(side * 0.075, 0.74, 0.18);
+    const stache = new THREE.Mesh(new THREE.SphereGeometry(0.06, 9, 7), lambert(0xf5f2ea));
+    stache.scale.set(1.4, 0.55, 0.6);
+    stache.position.set(side * 0.07, 0.68, 0.21);
+    stache.rotation.z = side * -0.35;
+    g.add(stache);
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), lambert(0xe8a08a));
+    cheek.scale.set(1, 0.7, 0.5);
+    cheek.position.set(side * 0.12, 0.75, 0.18);
+    g.add(cheek);
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.028, 0.03), lambert(0xf5f2ea));
+    brow.position.set(side * 0.075, 0.82, 0.185);
+    brow.rotation.z = side * 0.25;
+    g.add(brow);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.028, 9, 7), lambert(0x2b2323));
+    eye.position.set(side * 0.075, 0.78, 0.19);
     g.add(eye);
   }
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), lambert(0xe0876a));
+  nose.position.set(0, 0.72, 0.22);
+  g.add(nose);
 
-  // Pointy hat with a brim
-  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.05, 14), lambert(COLORS.gnomeHat));
-  brim.position.y = 0.8;
+  // Hat: brim, band, tall cone with a jaunty bent tip
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.27, 0.05, 14), lambert(COLORS.gnomeHat));
+  brim.position.y = 0.85;
   g.add(brim);
-  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.55, 14), lambert(COLORS.gnomeHat));
-  hat.position.y = 1.06;
-  hat.rotation.y = 0.3;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.23, 0.07, 14), lambert(0x8a2a20));
+  band.position.y = 0.9;
+  g.add(band);
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.5, 14), lambert(COLORS.gnomeHat));
+  hat.position.y = 1.15;
   g.add(hat);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.05, 9, 7), lambert(COLORS.gnomeHat));
+  tip.position.set(0.06, 1.38, 0.02);
+  g.add(tip);
   return g;
 }
 
@@ -258,41 +293,82 @@ function pickPowerup() {
   return POWERUPS[0];
 }
 
-// --- river event: water across every lane, safe bridge on one ---
+// --- rivers: LONG stretches of water with a plank bridge on one lane ---
+// The group's local frame sits at the river's leading edge; water extends
+// along local +Z is wrong on a globe, so instead every ring of tiles gets its
+// own theta pivot from the caller. Here we build one ring; the spawner stacks
+// them via sub-pivots so the water hugs the sphere in both directions.
 
 const RIVER_HALF = 0.2; // lateral half-width in radians (covers all lanes + margin)
 
-export function makeRiver(bridgeLane) {
+function riverRing(bridgeLane, { foam = false } = {}) {
   const R = CONFIG.planetRadius;
   const g = new THREE.Group();
-  const waterMat = new THREE.MeshLambertMaterial({
-    color: 0x4fa8d8, flatShading: true, transparent: true, opacity: 0.9,
-  });
-  // Tiles hug the sphere laterally: each is rotated down the curve
-  const step = 0.03;
+  const waterMat = new THREE.MeshLambertMaterial({ color: 0x2f7cc4, flatShading: true });
+  const step = 0.032;
   for (let a = -RIVER_HALF; a <= RIVER_HALF + 0.001; a += step) {
-    const laneAlphaAtTile = a;
-    const tile = new THREE.Mesh(new THREE.BoxGeometry(R * step + 0.06, 0.1, 0.85), waterMat);
-    tile.position.set(Math.sin(a) * R, Math.cos(a) * R - R + 0.05, 0);
+    const tile = new THREE.Mesh(
+      new THREE.BoxGeometry(R * step + 0.08, foam ? 0.16 : 0.12, 1.05),
+      waterMat
+    );
+    tile.position.set(Math.sin(a) * R, Math.cos(a) * R - R + 0.02, 0);
     tile.rotation.z = -a;
     g.add(tile);
+    if (foam) {
+      // White chop along the banks so the water edge reads instantly
+      const foamTile = new THREE.Mesh(
+        new THREE.BoxGeometry(R * step * 0.7, 0.08, 0.3),
+        lambert(0xeaf6ff)
+      );
+      foamTile.position.set(Math.sin(a) * R, Math.cos(a) * R - R + 0.14, -0.42);
+      foamTile.rotation.z = -a;
+      g.add(foamTile);
+    }
   }
-  // Bridge planks + rails on the safe lane
+  // Bridge segment on the safe lane: light planks with gaps + rails + posts
   const bridgeAlpha = laneAlpha(bridgeLane);
-  const wood = lambert(COLORS.bench);
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.09, 1.0), wood);
-  deck.position.set(Math.sin(bridgeAlpha) * R, Math.cos(bridgeAlpha) * R - R + 0.16, 0);
-  deck.rotation.z = -bridgeAlpha;
-  g.add(deck);
+  const bx = Math.sin(bridgeAlpha) * R;
+  const by = Math.cos(bridgeAlpha) * R - R;
+  const plankMat = lambert(0xd8ab6a);
+  for (const pz of [-0.36, 0, 0.36]) {
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.1, 0.3), plankMat);
+    plank.position.set(bx, by + 0.22, pz);
+    plank.rotation.z = -bridgeAlpha;
+    g.add(plank);
+  }
+  const railMat = lambert(0xb8854a);
   for (const side of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.16, 1.0), wood);
-    rail.position.set(
-      Math.sin(bridgeAlpha) * R + side * 0.45,
-      Math.cos(bridgeAlpha) * R - R + 0.28,
-      0
-    );
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 1.1), railMat);
+    rail.position.set(bx + side * 0.52, by + 0.52, 0);
     rail.rotation.z = -bridgeAlpha;
     g.add(rail);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.08), railMat);
+    post.position.set(bx + side * 0.52, by + 0.36, 0);
+    post.rotation.z = -bridgeAlpha;
+    g.add(post);
+  }
+  return g;
+}
+
+// Full river: rings stacked along the travel direction to cover `depth` rad.
+// Each ring is rotated about the PLANET CENTER (T(-R) · Rx(φ) · T(+R)) so the
+// water hugs the sphere; deeper rings sit at more-negative theta (farther out).
+export function makeRiver(bridgeLane, depth) {
+  const R = CONFIG.planetRadius;
+  const g = new THREE.Group();
+  const ringStep = 0.05;
+  const rings = Math.max(2, Math.round(depth / ringStep));
+  for (let i = 0; i <= rings; i++) {
+    const toCenter = new THREE.Group();
+    toCenter.position.y = -R;
+    const spin = new THREE.Group();
+    spin.rotation.x = -i * ringStep;
+    const backUp = new THREE.Group();
+    backUp.position.y = R;
+    backUp.add(riverRing(bridgeLane, { foam: i === 0 || i === rings }));
+    spin.add(backUp);
+    toCenter.add(spin);
+    g.add(toCenter);
   }
   return g;
 }
@@ -380,14 +456,15 @@ export class Spawner {
     }
   }
 
-  spawnRiver(spin) {
+  // Long water section: leading edge at spawn distance, `depth` radians deep
+  spawnRiver(spin, depth) {
     const theta0 = -CONFIG.spawnAheadAngle - spin;
     const bridgeLane = Math.floor(Math.random() * CONFIG.lanes);
-    const group = makeRiver(bridgeLane);
+    const group = makeRiver(bridgeLane, depth);
     const pivot = surfacePivot(theta0, 0, group);
     this.planetGroup.add(pivot);
     this.entities.push({
-      pivot, group, lane: bridgeLane, theta0,
+      pivot, group, lane: bridgeLane, theta0, depth,
       isBall: false, isPower: false, isRiver: true, bridgeLane,
       ptype: null, hitbox: null, collected: false,
     });

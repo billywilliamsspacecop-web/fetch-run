@@ -45,7 +45,7 @@ export class Game {
     this.power = null;      // { type, timeLeft }
     this.extraLife = false; // steak held (non-stacking)
     this.invulnTimer = 0;   // grace after a steak save
-    this.riverCooldown = 3;
+    this.nextWaterAt = Infinity; // spin value that triggers the next river
     // Squirrel chase state
     this.sqLane = 2;
     this.sqTargetLane = 2;
@@ -162,7 +162,10 @@ export class Game {
     const stageNow = 1 + Math.floor(this.distance / CONFIG.stageLength);
     if (stageNow > this.stage) {
       this.stage = stageNow;
-      this.ui.showStageBanner(this.stage);
+      const water = this.isWaterStage;
+      this.ui.showStageBanner(this.stage, water);
+      // Water stages alternate land chunks with long rivers
+      this.nextWaterAt = water ? this.spin + 0.4 : Infinity;
     }
     this.speed = Math.min(
       CONFIG.maxSpeed,
@@ -185,21 +188,17 @@ export class Game {
     // Squirrel dodges on its own up at the crest
     this._updateSquirrel(dt);
 
-    // Spawning: normal rows, yarn-frenzy ball rows, or a rare river
-    this.riverCooldown -= dt;
+    // Spawning: on water stages, long rivers on a fixed cadence with normal
+    // rows on the land chunks between them; otherwise normal/yarn rows.
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      if (
-        this.stage >= CONFIG.river.minStage &&
-        this.riverCooldown <= 0 &&
-        Math.random() < CONFIG.river.chance * 10 // per-row odds
-      ) {
-        this.spawner.spawnRiver(this.spin);
-        this.riverCooldown = CONFIG.river.cooldown;
-      } else if (this.power?.type === 'yarn') {
-        this.spawner.spawnBallRow(this.spin);
-      } else {
-        this.spawner.spawnRow(this.spin);
+      const rowTheta0 = -CONFIG.spawnAheadAngle - this.spin;
+      if (this.isWaterStage && this.spin >= this.nextWaterAt) {
+        this.spawner.spawnRiver(this.spin, CONFIG.water.riverDepth);
+        this.nextWaterAt = this.spin + CONFIG.water.spacing;
+      } else if (!this._rowLandsInWater(rowTheta0)) {
+        if (this.power?.type === 'yarn') this.spawner.spawnBallRow(this.spin);
+        else this.spawner.spawnRow(this.spin);
       }
       const t = (this.speed - CONFIG.baseSpeed) / (CONFIG.maxSpeed - CONFIG.baseSpeed);
       this.spawnTimer =
@@ -251,8 +250,12 @@ export class Game {
           continue;
         }
       } else if (e.isRiver) {
+        // The river occupies [0, depth] behind its leading edge
+        const overWater = cur > -0.015 && cur < e.depth + 0.015;
         const offBridge = Math.abs(this.lane - e.bridgeLane) > 0.55;
-        if (Math.abs(cur) < 0.025 && offBridge && !this._survivesHit(e, 'splash')) return;
+        if (overWater && offBridge && !this._survivesHit(e, 'splash')) return;
+        if (cur > e.depth + CONFIG.despawnBehindAngle) this.spawner.remove(e);
+        continue;
       } else {
         const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
         const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
@@ -270,6 +273,20 @@ export class Game {
     }
 
     this.ui.updateHUD(this);
+  }
+
+  get isWaterStage() {
+    const { firstAt, every } = CONFIG.water;
+    return this.stage >= firstAt && (this.stage - firstAt) % every === 0;
+  }
+
+  // Would a row spawned at this theta0 land inside an active river span?
+  _rowLandsInWater(rowTheta0) {
+    return this.spawner.entities.some(
+      (e) => e.isRiver &&
+        rowTheta0 > e.theta0 - e.depth - 0.14 &&
+        rowTheta0 < e.theta0 + 0.14
+    );
   }
 
   // Returns true if the runner survives contact (zoomies / steak / grace).
@@ -304,9 +321,13 @@ export class Game {
     let bridgeLane = null;
     for (const e of this.spawner.entities) {
       const cur = this.spin + e.theta0 - sqT;
+      if (e.isRiver) {
+        // Long water: get on the bridge before the front, stay on until past
+        if (cur > -0.35 && cur < e.depth + 0.05) bridgeLane = e.bridgeLane;
+        continue;
+      }
       if (cur < -0.35 || cur > 0.04) continue;
-      if (e.isRiver) bridgeLane = e.bridgeLane;
-      else if (!e.isBall && !e.isPower) danger[e.lane] += cur > -0.12 ? 10 : 3;
+      if (!e.isBall && !e.isPower) danger[e.lane] += cur > -0.12 ? 10 : 3;
     }
     if (bridgeLane !== null) {
       this.sqTargetLane = bridgeLane;
