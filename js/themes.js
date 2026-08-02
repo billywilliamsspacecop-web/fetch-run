@@ -84,7 +84,7 @@ export const THEMES = [
       { make: P.obGnome },
       { make: P.obPicnicBasket },
       { make: P.obSprinkler },
-      { make: () => P.obBench() },
+      { make: P.obBenchWood },
     ],
     scenery: [
       { make: P.scTree, count: 70, near: 0.02, far: 0.55 },
@@ -105,7 +105,7 @@ export const THEMES = [
       { make: P.obHotDogCart },
       { make: P.obStroller },
       { make: P.obFountain },
-      { make: () => P.obBench(0x4a7a4f) },
+      { make: P.obBenchPark },
     ],
     scenery: [
       { make: P.scTree, count: 46, near: 0.03, far: 0.55 },

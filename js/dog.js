@@ -255,12 +255,13 @@ export function buildDog(breedKey = 'gsp', cosmetics = {}) {
   const baseX = breed.bodyScaleX + 0.12; // chibi bodies read a touch rounder
 
   // t: seconds, speed: rad/s planet spin, state, lean (targetLane - lane)
-  function animate(t, speed, state, lean = 0) {
+  // style/deathT drive the wipeout variants (see Game.WIPEOUT_BY_KIND)
+  function animate(t, speed, state, lean = 0, style = 'spinout', deathT = 0) {
     if (state === 'dead') {
-      dog.rotation.set(0, 0, 1.5);
-      dog.position.y = -0.2;
+      wipeout(style, deathT);
       return;
     }
+    dog.scale.set(1, 1, 1);
     const freq = 8.5 + speed * 24;
     const phase = t * freq;
 
@@ -288,6 +289,53 @@ export function buildDog(breedKey = 'gsp', cosmetics = {}) {
     parts.earR.rotation.z = -earBase - Math.sin(phase + 0.7) * earAmp - Math.sin(phase * 1.19) * earAmp * 0.3;
     parts.tongue.rotation.x = 0.45 + Math.sin(phase * 0.93 + 0.5) * 0.14;
     if (dog.userData.propeller) dog.userData.propeller.rotation.y = t * (8 + speed * 20);
+  }
+
+  // Wipeout variants — comedic, and readable enough that you know what got
+  // you. deathT is seconds since the crash, so each plays out over time.
+  function wipeout(style, dt) {
+    const p = Math.min(1, dt / 0.9);        // 0..1 progress
+    const settle = 1 - Math.pow(1 - p, 3);  // ease-out
+    dog.scale.set(1, 1, 1);
+    switch (style) {
+      case 'bounce': {
+        // Springy things fling you up and back, tumbling
+        const hop = Math.sin(Math.min(p, 1) * Math.PI) * 1.5;
+        dog.position.y = hop;
+        dog.position.z = settle * 1.6;
+        dog.rotation.set(-settle * 7, 0, Math.sin(dt * 9) * 0.4);
+        break;
+      }
+      case 'trip': {
+        // Low obstacles catch the legs: face-plant forward
+        dog.position.y = Math.sin(Math.min(p, 1) * Math.PI) * 0.35;
+        dog.position.z = -settle * 0.5;
+        dog.rotation.set(-settle * (Math.PI / 2), 0, 0);
+        break;
+      }
+      case 'flatten': {
+        // Immovable object: pancake against it, then slide down
+        const squash = 1 - settle * 0.72;
+        dog.scale.set(1 + settle * 0.7, squash, 1 - settle * 0.45);
+        dog.position.y = -settle * 0.18;
+        dog.rotation.set(0, 0, 0);
+        break;
+      }
+      case 'tangle': {
+        // Nets and hoppers: wrapped up, wobbling in place
+        dog.position.y = 0.1 * (1 - settle);
+        dog.rotation.set(settle * 0.5, Math.sin(dt * 7) * 0.8, settle * 1.2);
+        dog.scale.set(1 - settle * 0.2, 1 - settle * 0.15, 1 - settle * 0.2);
+        break;
+      }
+      default: { // 'spinout'
+        // Knocked sideways, spinning like a cartoon
+        dog.position.y = Math.sin(Math.min(p, 1) * Math.PI) * 0.45;
+        dog.rotation.set(0, settle * 6, settle * (Math.PI / 2));
+        dog.position.z = settle * 0.5;
+        break;
+      }
+    }
   }
 
   dog.traverse((o) => { if (o.isMesh) o.castShadow = true; });

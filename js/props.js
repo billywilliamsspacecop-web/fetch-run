@@ -332,6 +332,11 @@ export function obBench(color = COLORS.bench) {
   return g;
 }
 
+// Named bench variants so wipeout-style lookup (which keys off the builder's
+// function name) doesn't see an anonymous arrow and fall back to default.
+export const obBenchWood = () => obBench();
+export const obBenchPark = () => obBench(0x4a7a4f);
+
 // ===================== PARK OBSTACLES =====================
 
 export function obTrashCan() {

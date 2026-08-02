@@ -12,7 +12,7 @@ export class UI {
       'btn-shop', 'btn-shop-close', 'shop-bank', 'shop-items',
       'btn-play', 'btn-characters', 'btn-select-done',
       'btn-prev', 'btn-next', 'select-name', 'select-desc', 'select-stage',
-      'btn-pause', 'btn-resume', 'btn-pause-home',
+      'btn-pause', 'btn-resume', 'btn-pause-home', 'btn-mute',
       'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'hud-life', 'stage-banner',
       'death-title', 'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
       'd-stage', 'd-time', 'd-speed', 'd-balls', 'd-close',
@@ -30,6 +30,12 @@ export class UI {
     this.onSelectOpen = null;  // set by main; drives the 3D character preview
     this.onSelectClose = null;
     this.onSelectStep = null;
+    this.onMuteToggle = null;
+
+    this.el['btn-mute'].addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setMuted(!this.onMuteToggle?.());
+    });
 
     this.el['btn-pause'].addEventListener('click', (e) => {
       e.stopPropagation();
@@ -99,6 +105,11 @@ export class UI {
     this.el['intro-hint'].addEventListener('click', () => this.onScreenTap?.());
 
     this.showMenu();
+  }
+
+  setMuted(muted) {
+    this.el['btn-mute'].textContent = muted ? '🔇' : '🔊';
+    this.el['btn-mute'].classList.toggle('muted', muted);
   }
 
   // Called by the CharacterSelect as it cycles models

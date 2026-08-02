@@ -10,11 +10,12 @@ const _v = new Vector3();
 // Game states: 'menu' -> 'intro' -> 'running' -> 'dead' -> ...
 // The intro is the chase short: squirrel bolts, runner follows, fence smashes.
 export class Game {
-  constructor({ planetGroup, dogPivot, squirrelPivot, fx }, input, ui) {
+  constructor({ planetGroup, dogPivot, squirrelPivot, fx, sfx }, input, ui) {
     this.planetGroup = planetGroup;
     this.dogPivot = dogPivot;
     this.squirrelPivot = squirrelPivot;
     this.fx = fx;
+    this.sfx = sfx;
     this.input = input;
     this.ui = ui;
     this.spawner = new Spawner(planetGroup);
@@ -45,6 +46,8 @@ export class Game {
     this.targetLane = 2;
     this.spawnTimer = 1.2; // grace period once the run proper starts
     this.balls = 0;
+    this.collectStreak = 0;
+    this._lastCollectAt = -9;
     this.nearMisses = 0;
     this.deathTimer = 0;
     this.deathCause = 'wipeout';
@@ -75,7 +78,9 @@ export class Game {
 
   _moveTo(lane) {
     if (this.state !== 'running' || this.paused) return;
-    this.targetLane = Math.max(0, Math.min(CONFIG.lanes - 1, lane));
+    const next = Math.max(0, Math.min(CONFIG.lanes - 1, lane));
+    if (next !== this.targetLane) this.sfx?.lane();
+    this.targetLane = next;
   }
 
   // Called by menu overlay taps, death buttons, and Space/Enter.
@@ -200,6 +205,7 @@ export class Game {
         newTheme = this.theme.label;
       }
       this.ui.showStageBanner(this.stage, newTheme);
+      if (newTheme) this.sfx?.newTheme(); else this.sfx?.checkpoint();
     }
     this.speed = Math.min(
       CONFIG.maxSpeed,
@@ -259,6 +265,11 @@ export class Game {
         if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.65) {
           e.collected = true;
           this.balls++;
+          // Streak makes consecutive pickups play an ascending run
+          this.collectStreak = this.time - (this._lastCollectAt ?? -9) < 1.1
+            ? (this.collectStreak ?? 0) + 1 : 0;
+          this._lastCollectAt = this.time;
+          this.sfx?.collect(this.collectStreak);
           e.group.getWorldPosition(_v);
           this.fx?.collect(_v);
           this.spawner.remove(e);
@@ -268,8 +279,11 @@ export class Game {
       } else if (e.isPower) {
         if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.6) {
           e.collected = true;
-          if (e.ptype === 'steak') this.extraLife = true; // non-stacking
-          else this.power = { type: e.ptype, timeLeft: CONFIG.powerups.duration };
+          if (e.ptype === 'steak') { this.extraLife = true; this.sfx?.extraLife(); }
+          else {
+            this.power = { type: e.ptype, timeLeft: CONFIG.powerups.duration };
+            this.sfx?.powerup();
+          }
           e.group.getWorldPosition(_v);
           this.fx?.collect(_v);
           this.spawner.remove(e);
@@ -280,6 +294,7 @@ export class Game {
         const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
         const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
         if (Math.abs(cur) < hitAng && laneDist < hitLat) {
+          this.lastHitKind = e.kind; // picks the wipeout animation
           if (!this._survivesHit(e)) return;
           continue;
         }
@@ -309,6 +324,7 @@ export class Game {
     if (this.extraLife) {
       this.extraLife = false;
       this.invulnTimer = 1.5;
+      this.sfx?.save();
       this.dogPivot.children[0]?.getWorldPosition(_v);
       this.fx?.crash(_v);
       this.spawner.remove(e);
@@ -343,10 +359,28 @@ export class Game {
     this.squirrelPivot.rotation.z = laneAlpha(this.sqLane);
   }
 
+  // Which wipeout animation plays, based on what you ran into. Soft/springy
+  // things bounce you, low things trip you, tall solid things flatten you.
+  static WIPEOUT_BY_KIND = {
+    obCouch: 'bounce', obLaundryBasket: 'bounce', obBramble: 'bounce',
+    obPicnicBasket: 'bounce', obMushrooms: 'bounce',
+    obFallenLog: 'trip', obCoffeeTable: 'trip', obBench: 'trip',
+    obCourtCone: 'trip', obStump: 'trip',
+    obBenchWood: 'trip', obBenchPark: 'trip',
+    obBoulder: 'flatten', obTrashCan: 'flatten', obFountain: 'flatten',
+    obBallMachine: 'flatten', obVacuum: 'flatten',
+    obGnome: 'spinout', obSprinkler: 'spinout', obStroller: 'spinout',
+    obHotDogCart: 'spinout', obCatTower: 'spinout',
+    obTennisNet: 'tangle', obBallHopper: 'tangle', obUmpireChair: 'tangle',
+  };
+
   _die() {
     this.state = 'dead';
     this.deathCause = 'wipeout';
     this.deathTimer = 0;
+    this.wipeoutStyle =
+      Game.WIPEOUT_BY_KIND[this.lastHitKind] ?? 'spinout';
+    this.sfx?.wipeout();
     this.dogPivot.children[0]?.getWorldPosition(_v);
     this.fx?.crash(_v);
     const d = Math.floor(this.distance);

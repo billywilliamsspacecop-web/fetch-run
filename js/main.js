@@ -9,6 +9,7 @@ import { Input } from './input.js';
 import { UI } from './ui.js';
 import { Game } from './game.js';
 import { CharacterSelect } from './select.js';
+import { Sound } from './sound.js';
 
 const R = CONFIG.planetRadius;
 
@@ -78,6 +79,11 @@ window.addEventListener('resize', () => {
 // --- world + dog + fx ---
 const { planetGroup, clouds, sunDisc, sceneryGroups, tufts, lights, tintables } = buildWorld(scene);
 const fx = new FX(scene);
+const sfx = new Sound();
+// iOS blocks audio until a real gesture; unlock on the first touch/click
+for (const ev of ['pointerdown', 'keydown']) {
+  window.addEventListener(ev, () => sfx.unlock(), { once: true });
+}
 
 // Cool fill light from the shade side keeps the dark GSP/cat readable
 const fill = new THREE.DirectionalLight(0xa8c8ff, 0.4);
@@ -115,11 +121,13 @@ scene.add(squirrelPivot);
 // --- game wiring ---
 const input = new Input();
 const ui = new UI(input);
-const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx }, input, ui);
+const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx, sfx }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
 ui.onRunAgain = () => game.handleScreenTap();
 ui.onHome = () => game.goHome();
-ui.onPauseToggle = () => game.togglePause();
+ui.onPauseToggle = () => { sfx.uiTap(); game.togglePause(); };
+ui.onMuteToggle = () => sfx.toggle();
+ui.setMuted(!sfx.enabled);
 ui.onHomeFromPause = () => { game.resume(); game.goHome(); };
 const charSelect = new CharacterSelect(document.getElementById('select-stage'), getEquip);
 charSelect.onChange = (key, breed) => {
@@ -258,7 +266,8 @@ function frame(now) {
   const zoomies = game.power?.type === 'zoomies';
   // Zoomies: the gallop cycle itself goes into overdrive
   const animSpeed = game.speed * (zoomies ? CONFIG.powerups.zoomiesAnimBoost : 1);
-  dog.animate(animNow / 1000, animSpeed, game.state, game.targetLane - game.lane);
+  dog.animate(animNow / 1000, animSpeed, game.state, game.targetLane - game.lane,
+    game.wipeoutStyle, game.deathTimer);
   const chasing = game.state === 'intro' || game.state === 'running';
   squirrel.group.visible = chasing;
   if (chasing) squirrel.animate(animNow / 1000, animSpeed);
@@ -276,6 +285,7 @@ function frame(now) {
       dog.group.getWorldPosition(dogWorldPos);
       dogWorldPos.z += 0.7; // just behind the paws
       fx.dust(dogWorldPos);
+      sfx.step();
       if (zoomies) {
         // Wind streaks whipping past the runner
         for (let i = 0; i < 2; i++) {
