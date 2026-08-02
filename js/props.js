@@ -13,9 +13,12 @@ import { COLORS } from './config.js';
 export const lambert = (color, opts = {}) =>
   new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts });
 
-// Self-lit material so pickups stay bright in dim themes (forest, night skies)
+// Self-lit material so pickups stay bright in dim themes (forest, night skies).
+// Kept moderate on purpose: cranked high it flattens the item's own shading
+// and you can't tell an acorn from a sock. The glow that makes pickups POP
+// lives OUTSIDE the silhouette instead (see wrapPickup).
 const glowMat = (color, emissive = color) =>
-  new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: 0.75, flatShading: true });
+  new THREE.MeshLambertMaterial({ color, emissive, emissiveIntensity: 0.32, flatShading: true });
 
 const haloMat = (color, opacity) =>
   new THREE.MeshBasicMaterial({
@@ -25,24 +28,49 @@ const haloMat = (color, opacity) =>
 
 // Wraps any pickup mesh with the shared glow language.
 // kind: 'ball' (collectible) or 'power' (powerup — bigger, adds a spin ring)
+//
+// The glow is deliberately kept OUTSIDE the item's silhouette. An additive
+// halo drawn over the object brightens every pixel of it, which is what made
+// pickups turn into featureless blobs — you could see something was grabbable
+// but not what it was. Instead:
+//   * backlight sphere renders BackSide only, so it sits BEHIND the item and
+//     rims it rather than covering its face
+//   * a flat glow disc on the ground marks the spot from a distance
+//   * the item's own material keeps normal shading so its shape reads
 function wrapPickup(inner, { color, kind, y = 0.5, haloRadius = 0.33 }) {
   const g = new THREE.Group();
   const float = new THREE.Group(); // animated: bob / spin / pulse
   float.add(inner);
   float.position.y = y;
 
-  // Deliberately faint: the emissive material already makes pickups pop, so
-  // the halo is a rim/aura hint. Cranked any higher it turns into a bright
-  // ball that swallows the shape and you can't tell what you're grabbing.
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(haloRadius, 14, 10), haloMat(color, 0.12));
+  // A RING around the item, not a sphere over it. Any additive sphere —
+  // even back-faces-only — still covers the item's full screen area and
+  // washes it out, which is what made pickups unidentifiable. A torus sits
+  // entirely outside the silhouette, so the item's own shading reads clean.
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(haloRadius * 1.5, 0.045, 8, 28),
+    haloMat(color, 0.55)
+  );
+  halo.rotation.x = Math.PI / 2.6; // tilted so it reads as a ring, not a line
   float.add(halo);
+
+  // Ground marker — visible well before the item itself resolves
+  const pad = new THREE.Mesh(
+    new THREE.CircleGeometry(haloRadius * 1.5, 24),
+    haloMat(color, 0.3)
+  );
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.y = 0.03;
+  g.add(pad);
+  g.userData.pad = pad;
 
   if (kind === 'power') {
     // Powerups get an orbiting ring so they read as "special" at a glance,
     // and so they're distinguishable from collectibles by motion alone.
+    // Sits outside the item, so it never obscures it.
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(haloRadius * 1.45, 0.035, 8, 30),
-      haloMat(color, 0.85)
+      new THREE.TorusGeometry(haloRadius * 1.7, 0.035, 8, 30),
+      haloMat(color, 0.9)
     );
     ring.rotation.x = Math.PI / 2;
     float.add(ring);
@@ -955,25 +983,41 @@ export function scFloodlight() {
   return g;
 }
 
+// A run of hallway wall. Critically it is LONG ALONG Z (the direction of
+// travel) and THIN IN X (lateral) — the previous version had those swapped,
+// so each "wall" was really a barrier lying across the track, seen edge-on
+// from the side. That read as open field with the odd panel floating in it.
+// Length matches the even spacing in world.js so segments join into a
+// continuous corridor with no gaps.
+export const HOUSE_WALL_LEN = 2.6;
+
 export function scHouseWall() {
   const g = new THREE.Group();
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.6, 0.14), lambert(0xe8dcc8));
-  wall.position.y = 1.3;
+  const L = HOUSE_WALL_LEN;
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.1, L), lambert(0xe8dcc8));
+  wall.position.y = 1.05;
   g.add(wall);
-  const rail = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.12, 0.18), lambert(0xf5efe4));
-  rail.position.y = 0.9;
+  // Chair rail + baseboard run the length of the hall
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, L), lambert(0xf5efe4));
+  rail.position.y = 0.82;
   g.add(rail);
-  const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.22, 0.2), lambert(0xf5efe4));
-  base.position.y = 0.11;
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, L), lambert(0xf5efe4));
+  base.position.y = 0.12;
   g.add(base);
-  // Framed pictures
-  for (const [x, c] of [[-0.6, 0x7a9ac0], [0.55, 0xc08a6a]]) {
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 0.05), lambert(0x8a6a45));
-    frame.position.set(x, 1.7, 0.09);
-    g.add(frame);
-    const art = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.3, 0.02), lambert(c));
-    art.position.set(x, 1.7, 0.12);
-    g.add(art);
+  const crown = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, L), lambert(0xf5efe4));
+  crown.position.y = 2.02;
+  g.add(crown);
+  // Framed pictures on BOTH faces — the same wall model is used on the left
+  // and right of the track, so it has to look right viewed from either side.
+  for (const face of [-1, 1]) {
+    for (const [z, c] of [[-0.62, 0x7a9ac0], [0.62, 0xc08a6a]]) {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.46, 0.56), lambert(0x8a6a45));
+      frame.position.set(face * 0.1, 1.4, z);
+      g.add(frame);
+      const art = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.34, 0.44), lambert(c));
+      art.position.set(face * 0.13, 1.4, z);
+      g.add(art);
+    }
   }
   return g;
 }
@@ -1058,5 +1102,386 @@ export function scCloud() {
     s.scale.y = 0.65;
     g.add(s);
   }
+  return g;
+}
+
+// ===================== RARE STAGE: HEAVEN =====================
+
+export function obCloudBank() {
+  const g = new THREE.Group();
+  const m = lambert(0xf7f4ff);
+  for (const [x, y, z, r] of [[0, 0.3, 0, 0.42], [0.34, 0.22, 0.05, 0.3], [-0.32, 0.24, -0.04, 0.32]]) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), m);
+    puff.position.set(x, y, z);
+    puff.scale.y = 0.72;
+    g.add(puff);
+  }
+  return g;
+}
+
+export function obHarp() {
+  const g = new THREE.Group();
+  const gold = lambert(0xf0d47a);
+  const frame = new THREE.Mesh(new THREE.TorusGeometry(0.32, 0.055, 8, 18, Math.PI * 1.2), gold);
+  frame.position.y = 0.45;
+  frame.rotation.z = -0.4;
+  g.add(frame);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.7, 8), gold);
+  post.position.set(-0.2, 0.35, 0);
+  g.add(post);
+  for (let i = 0; i < 5; i++) {
+    const str = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.42 - i * 0.06, 5), lambert(0xfff8e0));
+    str.position.set(-0.12 + i * 0.09, 0.36 + i * 0.02, 0);
+    g.add(str);
+  }
+  return g;
+}
+
+export function obPillar() {
+  const g = new THREE.Group();
+  const stone = lambert(0xf2ece0);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), stone);
+  base.position.y = 0.06;
+  g.add(base);
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.19, 1.0, 14), stone);
+  shaft.position.y = 0.62;
+  g.add(shaft);
+  for (let i = 0; i < 6; i++) {
+    const flute = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.95, 0.03), lambert(0xe0d8c8));
+    const a = (i / 6) * Math.PI * 2;
+    flute.position.set(Math.cos(a) * 0.17, 0.62, Math.sin(a) * 0.17);
+    g.add(flute);
+  }
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.14, 0.46), stone);
+  cap.position.y = 1.19;
+  g.add(cap);
+  return g;
+}
+
+export function obGate() {
+  const g = new THREE.Group();
+  const gold = lambert(0xf5d98a);
+  for (const x of [-0.42, 0.42]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.3, 10), gold);
+    post.position.set(x, 0.65, 0);
+    g.add(post);
+    const finial = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), lambert(0xfff0b8));
+    finial.position.set(x, 1.36, 0);
+    g.add(finial);
+  }
+  for (let i = 0; i < 5; i++) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.0, 8), gold);
+    bar.position.set(-0.32 + i * 0.16, 0.5, 0);
+    g.add(bar);
+  }
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 8, 16, Math.PI), gold);
+  arch.position.y = 1.1;
+  g.add(arch);
+  return g;
+}
+
+export function scHeavenCloud() {
+  const g = new THREE.Group();
+  const m = lambert(0xfdfbff);
+  for (let i = 0; i < 4; i++) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.5 + Math.random() * 0.5, 12, 9), m);
+    puff.position.set((Math.random() - 0.5) * 1.6, Math.random() * 0.4, (Math.random() - 0.5) * 1.2);
+    puff.scale.y = 0.6;
+    g.add(puff);
+  }
+  return g;
+}
+
+export function scHalo() {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.3, 0.05, 10, 22),
+    new THREE.MeshLambertMaterial({ color: 0xffe9a0, emissive: 0xffd97a, emissiveIntensity: 0.9, flatShading: true })
+  );
+  ring.rotation.x = Math.PI / 2 - 0.3;
+  ring.position.y = 1.4;
+  g.add(ring);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.4, 6), lambert(0xf0ecd8));
+  post.position.y = 0.7;
+  g.add(post);
+  return g;
+}
+
+// ===================== RARE STAGE: SPACE =====================
+// In space both runners ride little ships, so the obstacles are hazards
+// you fly past rather than things sitting on the ground.
+
+export function obAsteroid() {
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.4, 0), lambert(0x7a6f68));
+  rock.position.y = 0.6;
+  rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+  g.add(rock);
+  for (let i = 0; i < 3; i++) {
+    const crater = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), lambert(0x5f564f));
+    const a = Math.random() * Math.PI * 2;
+    crater.position.set(Math.cos(a) * 0.3, 0.6 + (Math.random() - 0.5) * 0.4, Math.sin(a) * 0.3);
+    g.add(crater);
+  }
+  g.userData.tumble = rock;
+  return g;
+}
+
+export function obSatellite() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.5), lambert(0xc8ccd4));
+  body.position.y = 0.7;
+  g.add(body);
+  for (const sx of [-1, 1]) {
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.34), lambert(0x2f4f9a));
+    panel.position.set(sx * 0.44, 0.7, 0);
+    g.add(panel);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.16, 6), lambert(0x9aa0a8));
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(sx * 0.25, 0.7, 0);
+    g.add(arm);
+  }
+  const dish = new THREE.Mesh(
+    new THREE.SphereGeometry(0.16, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    lambert(0xe8eaee)
+  );
+  dish.rotation.x = -0.7;
+  dish.position.set(0, 0.95, -0.1);
+  g.add(dish);
+  g.userData.tumble = g;
+  return g;
+}
+
+export function obSpaceRock() {
+  const g = new THREE.Group();
+  for (const [x, y, s] of [[0, 0.55, 1], [0.3, 0.75, 0.6], [-0.26, 0.4, 0.5]]) {
+    const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22 * s + 0.1, 0), lambert(0x6a5f5a));
+    r.position.set(x, y, 0);
+    r.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+    g.add(r);
+  }
+  return g;
+}
+
+export function obUFO() {
+  const g = new THREE.Group();
+  const saucer = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.28, 0.12, 16), lambert(0x9aa4b0));
+  saucer.position.y = 0.7;
+  g.add(saucer);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: 0x8fe8d8, emissive: 0x4fd8c0, emissiveIntensity: 0.5, flatShading: true })
+  );
+  dome.position.y = 0.76;
+  g.add(dome);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const light = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 8, 6),
+      new THREE.MeshLambertMaterial({ color: 0xffd54f, emissive: 0xffc030, emissiveIntensity: 0.9, flatShading: true })
+    );
+    light.position.set(Math.cos(a) * 0.32, 0.64, Math.sin(a) * 0.32);
+    g.add(light);
+  }
+  g.userData.spin = saucer;
+  return g;
+}
+
+export function scStar() {
+  const s = new THREE.Mesh(
+    new THREE.SphereGeometry(0.05 + Math.random() * 0.06, 6, 5),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false })
+  );
+  return s;
+}
+
+export function scSpacePlanet() {
+  const g = new THREE.Group();
+  const colors = [0xd07a4f, 0x4f7ad0, 0xb04fd0, 0x50c08a];
+  const c = colors[Math.floor(Math.random() * colors.length)];
+  const p = new THREE.Mesh(new THREE.SphereGeometry(0.7 + Math.random() * 0.6, 14, 11), lambert(c));
+  p.position.y = 1.4;
+  g.add(p);
+  if (Math.random() < 0.5) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.06, 8, 26), lambert(0xe8d8a0));
+    ring.rotation.x = Math.PI / 2 - 0.4;
+    ring.position.y = 1.4;
+    g.add(ring);
+  }
+  return g;
+}
+
+// ===================== RARE STAGE: HELL =====================
+
+export function obLavaRock() {
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.4, 0), lambert(0x3a2420));
+  rock.position.y = 0.34;
+  rock.scale.y = 0.85;
+  g.add(rock);
+  // Glowing cracks
+  for (let i = 0; i < 4; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const crack = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.04, 0.05),
+      new THREE.MeshLambertMaterial({ color: 0xff8a2a, emissive: 0xff6a00, emissiveIntensity: 1, flatShading: true })
+    );
+    crack.position.set(Math.cos(a) * 0.24, 0.34 + (Math.random() - 0.5) * 0.3, Math.sin(a) * 0.24);
+    crack.rotation.y = a;
+    g.add(crack);
+  }
+  return g;
+}
+
+export function obPitchfork() {
+  const g = new THREE.Group();
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 8), lambert(0x4a2a20));
+  handle.position.y = 0.5;
+  g.add(handle);
+  const steel = lambert(0x8a2f2f);
+  const cross = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), steel);
+  cross.position.y = 0.98;
+  g.add(cross);
+  for (const x of [-0.18, 0, 0.18]) {
+    const tine = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.3, 6), steel);
+    tine.position.set(x, 1.15, 0);
+    g.add(tine);
+  }
+  return g;
+}
+
+export function obFireGeyser() {
+  const g = new THREE.Group();
+  const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.2, 12), lambert(0x2f1e1a));
+  vent.position.y = 0.1;
+  g.add(vent);
+  const flames = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.16 - i * 0.02, 0.34, 8),
+      new THREE.MeshLambertMaterial({
+        color: i < 2 ? 0xff5a1a : 0xffb02a,
+        emissive: i < 2 ? 0xff3a00 : 0xff8a00,
+        emissiveIntensity: 0.9, flatShading: true,
+        transparent: true, opacity: 0.9,
+      })
+    );
+    flame.position.y = 0.3 + i * 0.22;
+    flames.add(flame);
+  }
+  g.add(flames);
+  g.userData.flicker = flames;
+  return g;
+}
+
+export function obDemonGnome() {
+  // The backyard gnome's evil twin — a nice callback
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.38, 0.55, 14), lambert(0x6a2020));
+  body.position.y = 0.32;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 11), lambert(0xc4604a));
+  head.position.y = 0.72;
+  g.add(head);
+  const beard = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 9), lambert(0x2f2320));
+  beard.scale.set(1, 1.05, 0.7);
+  beard.position.set(0, 0.56, 0.1);
+  g.add(beard);
+  for (const side of [-1, 1]) {
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.26, 7), lambert(0x2f1e1a));
+    horn.position.set(side * 0.13, 0.94, 0);
+    horn.rotation.z = side * 0.4;
+    g.add(horn);
+    const eye = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 8, 6),
+      new THREE.MeshLambertMaterial({ color: 0xffd02a, emissive: 0xffa000, emissiveIntensity: 1, flatShading: true })
+    );
+    eye.position.set(side * 0.08, 0.78, 0.18);
+    g.add(eye);
+  }
+  const hat = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.5, 14), lambert(0x8a1f1f));
+  hat.position.y = 1.12;
+  g.add(hat);
+  return g;
+}
+
+export function scStalagmite() {
+  const h = 1.2 + Math.random() * 1.4;
+  const s = new THREE.Mesh(new THREE.ConeGeometry(0.3 + Math.random() * 0.2, h, 7), lambert(0x35211d));
+  s.position.y = h / 2;
+  return s;
+}
+
+export function scLavaPool() {
+  const g = new THREE.Group();
+  const pool = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.6 + Math.random() * 0.4, 0.55, 0.1, 12),
+    new THREE.MeshLambertMaterial({ color: 0xff7a2a, emissive: 0xff5500, emissiveIntensity: 0.85, flatShading: true })
+  );
+  pool.position.y = 0.05;
+  g.add(pool);
+  return g;
+}
+
+export function scTorch() {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.5, 8), lambert(0x2f1e1a));
+  post.position.y = 0.75;
+  g.add(post);
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.12, 0.18, 10), lambert(0x4a2f22));
+  bowl.position.y = 1.55;
+  g.add(bowl);
+  const flame = new THREE.Mesh(
+    new THREE.ConeGeometry(0.16, 0.4, 8),
+    new THREE.MeshLambertMaterial({ color: 0xffa62a, emissive: 0xff7000, emissiveIntensity: 1, flatShading: true })
+  );
+  flame.position.y = 1.82;
+  g.add(flame);
+  return g;
+}
+
+// ===================== SPACESHIPS (space stage) =====================
+// Both the runner and the quarry get a little ship so the chase continues
+// in orbit. The character sits in the cockpit rather than being replaced.
+
+export function makeShip(tint = 0xd8dde6, accent = 0xe8622e) {
+  const g = new THREE.Group();
+  const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.5, 6, 14), lambert(tint));
+  hull.rotation.x = Math.PI / 2;
+  hull.position.y = 0.42;
+  hull.scale.set(1, 1, 0.72);
+  g.add(hull);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.45, 14), lambert(accent));
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.set(0, 0.42, -0.72);
+  g.add(nose);
+  // Glass canopy the character shows through
+  const canopy = new THREE.Mesh(
+    new THREE.SphereGeometry(0.36, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshLambertMaterial({
+      color: 0x9fe8ff, transparent: true, opacity: 0.42, flatShading: true,
+    })
+  );
+  canopy.position.y = 0.72;
+  g.add(canopy);
+  for (const sx of [-1, 1]) {
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.3), lambert(accent));
+    fin.position.set(sx * 0.5, 0.34, 0.28);
+    fin.rotation.z = sx * 0.35;
+    g.add(fin);
+  }
+  // Thruster glow at the back
+  const thruster = new THREE.Mesh(
+    new THREE.ConeGeometry(0.18, 0.5, 10),
+    new THREE.MeshLambertMaterial({
+      color: 0x8fd8ff, emissive: 0x4fb8ff, emissiveIntensity: 1,
+      flatShading: true, transparent: true, opacity: 0.85,
+    })
+  );
+  thruster.rotation.x = Math.PI / 2;
+  thruster.position.set(0, 0.42, 0.75);
+  g.add(thruster);
+  g.userData.thruster = thruster;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return g;
 }

@@ -55,17 +55,40 @@ function buildSquirrelModel() {
     legs.push(pivot);
   }
 
+  // The tail is the squirrel's whole silhouette, so it gets real shaping:
+  // a BROAD, FLAT plume that sweeps up and arcs forward over the back,
+  // flaring widest through the middle and tapering to a point. Segments are
+  // wide-and-thin ellipsoids, not spheres — a stack of round balls on a stem
+  // reads as, well, not a tail.
   const tailPivot = new THREE.Group();
-  tailPivot.position.set(0, 0.3, 0.24);
-  [
-    { r: 0.09, pos: [0, 0.05, 0.08] },
-    { r: 0.11, pos: [0, 0.2, 0.14] },
-    { r: 0.12, pos: [0, 0.36, 0.1] },
-    { r: 0.11, pos: [0, 0.5, 0.0] },
-    { r: 0.08, pos: [0, 0.58, -0.12] },
-  ].forEach((t, i) => {
-    const tuft = new THREE.Mesh(new THREE.SphereGeometry(t.r, 10, 8), i >= 3 ? furLight : fur);
-    tuft.position.set(...t.pos);
+  tailPivot.position.set(0, 0.26, 0.2);
+  // A squirrel's tail is a FLAT vertical fan — broad side-to-side, thin
+  // front-to-back (roughly 4:1) — held up like a flag and curling forward.
+  // Round cross-sections stack into a cone/beehive instead, which is the
+  // shape to avoid. Widest about two-thirds up, tapering to a point.
+  // Few, LARGE, heavily-overlapping forms — many small stacked segments read
+  // as horizontal ribbing (a beehive/pinecone) from directly behind, which is
+  // exactly the angle the player sees. Three broad overlapping lobes plus a
+  // tip give a smooth continuous fan instead.
+  // Streams BACKWARD, the way a sprinting squirrel actually carries it,
+  // rather than flagged straight up. Held upright it filled the screen from
+  // the player's behind-view and hid the animal entirely; trailing back it
+  // foreshortens naturally and the squirrel stays readable. The fan is still
+  // flat — tall and thin — it just lies along the direction of travel.
+  const tailSpine = [
+    // pos (z = behind),      width, HEIGHT of fan, thin depth
+    { pos: [0, 0.16, 0.12], s: [0.10, 0.16, 0.14] }, // root at the rump
+    { pos: [0, 0.26, 0.30], s: [0.13, 0.28, 0.22] },
+    { pos: [0, 0.34, 0.50], s: [0.14, 0.34, 0.24] }, // widest part of the plume
+    { pos: [0, 0.40, 0.70], s: [0.12, 0.28, 0.20] },
+    { pos: [0, 0.44, 0.86], s: [0.08, 0.17, 0.12] }, // tapered tip
+  ];
+  tailSpine.forEach((seg, i) => {
+    const light = i >= 2; // sun-bleached toward the tip, like the real thing
+    const tuft = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 11), light ? furLight : fur);
+    tuft.position.set(...seg.pos);
+    tuft.scale.set(...seg.s);
+    tuft.rotation.x = 0.2 + i * 0.06; // gentle upward sweep
     tailPivot.add(tuft);
   });
   sq.add(tailPivot);

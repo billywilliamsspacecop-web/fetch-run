@@ -88,14 +88,26 @@ export function buildWorld(scene) {
     for (const spec of theme.scenery) {
       const { halfW } = measureHalfExtents(spec.make, 5);
       const clearance = edge + halfW / R;
-      for (let i = 0; i < spec.count; i++) {
-        const theta = Math.random() * Math.PI * 2;
-        const side = Math.random() < 0.5 ? -1 : 1;
-        const span = spec.far - spec.near;
-        const alpha = side * (clearance + spec.near + Math.random() * span);
+      const span = spec.far - spec.near;
+      const place = (theta, side, jitter) => {
+        const alpha = side * (clearance + spec.near + jitter * span);
         const obj = spec.make();
         obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         group.add(surfacePivot(theta, alpha, obj));
+      };
+      if (spec.even) {
+        // Evenly spaced (and usually on both sides) so segments butt together
+        // into a continuous run — random placement leaves gaps and overlaps,
+        // which is fine for trees but breaks a hallway.
+        for (let i = 0; i < spec.count; i++) {
+          const theta = (i / spec.count) * Math.PI * 2;
+          if (spec.bothSides) { place(theta, -1, 0); place(theta, 1, 0); }
+          else place(theta, i % 2 === 0 ? -1 : 1, 0);
+        }
+      } else {
+        for (let i = 0; i < spec.count; i++) {
+          place(Math.random() * Math.PI * 2, Math.random() < 0.5 ? -1 : 1, Math.random());
+        }
       }
     }
     planetGroup.add(group);

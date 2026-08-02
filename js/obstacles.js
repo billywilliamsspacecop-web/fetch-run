@@ -117,8 +117,16 @@ export class Spawner {
         const pulse = 1 + Math.sin(phase * 1.6) * (isPower ? 0.09 : 0.05);
         ud.float.scale.setScalar(pulse);
         if (ud.halo) {
-          ud.halo.scale.setScalar(1 + Math.sin(phase * 1.3) * 0.12);
-          ud.halo.material.opacity = (isPower ? 0.18 : 0.11) + Math.sin(phase * 1.3) * 0.05;
+          // Ring counter-rotates against the item's spin so both read clearly
+          ud.halo.rotation.z = -t * 1.1;
+          ud.halo.scale.setScalar(1 + Math.sin(phase * 1.3) * 0.09);
+          ud.halo.material.opacity = (isPower ? 0.7 : 0.5) + Math.sin(phase * 1.3) * 0.12;
+        }
+        if (ud.pad) {
+          // Ground marker pulses opposite the item's bob, so the spot stays
+          // readable even when the pickup is at the top of its float
+          ud.pad.scale.setScalar(1 + Math.sin(phase + Math.PI) * 0.14);
+          ud.pad.material.opacity = (isPower ? 0.4 : 0.28) + Math.sin(phase) * 0.08;
         }
         if (ud.ring) {
           ud.ring.rotation.z = t * 1.9;

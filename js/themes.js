@@ -176,8 +176,10 @@ export const THEMES = [
       { make: P.obCatTower },
     ],
     scenery: [
-      // Walls hug the lane band tightly so it reads as a hallway, not a field
-      { make: P.scHouseWall, count: 52, near: 0.005, far: 0.09 },
+      // Evenly spaced on BOTH sides so segments butt together into an
+      // unbroken hallway. count is chosen so arc-length per segment
+      // (2*PI*R / count) is just under HOUSE_WALL_LEN, giving slight overlap.
+      { make: P.scHouseWall, count: 50, near: 0.005, far: 0, even: true, bothSides: true },
       { make: P.scBookshelf, count: 14, near: 0.05, far: 0.3 },
       { make: P.scFloorLamp, count: 14, near: 0.04, far: 0.3 },
       { make: P.scHousePlant, count: 20, near: 0.02, far: 0.35 },

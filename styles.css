@@ -262,14 +262,20 @@ html, body {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
+/* Sits high on the screen, above the horizon line where obstacles crest,
+   so it never hides something you have to dodge. Semi-transparent with a
+   heavy outline for the same reason - you can read oncoming props THROUGH
+   it if one does line up behind the text. */
 #stage-banner {
-  margin-top: 10vh;
-  font-size: 42px;
+  margin-top: 3vh;
+  font-size: 34px;
   font-weight: 900;
   letter-spacing: 2px;
-  color: #ffd54f;
-  text-shadow: 0 4px 0 rgba(140, 70, 0, 0.5), 0 8px 20px rgba(0, 0, 0, 0.3);
-  animation: stagePop 2s ease-out forwards;
+  color: rgba(255, 213, 79, 0.82);
+  -webkit-text-stroke: 1.5px rgba(90, 45, 0, 0.55);
+  paint-order: stroke fill;
+  text-shadow: 0 3px 0 rgba(140, 70, 0, 0.35);
+  animation: stagePop 1.6s ease-out forwards;
 }
 
 #stage-banner.with-theme {
@@ -280,11 +286,12 @@ html, body {
 }
 
 .banner-sub {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: 4px;
-  color: #fff6e0;
-  text-shadow: 0 3px 0 rgba(120, 60, 0, 0.45);
+  color: rgba(255, 246, 224, 0.85);
+  -webkit-text-stroke: 1px rgba(90, 45, 0, 0.5);
+  paint-order: stroke fill;
 }
 
 @keyframes stagePop {
@@ -305,7 +312,7 @@ html, body {
 }
 
 @keyframes flashFade {
-  0% { opacity: 0.55; }
+  0% { opacity: 0.3; }
   100% { opacity: 0; }
 }
 
