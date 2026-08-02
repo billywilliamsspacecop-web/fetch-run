@@ -33,21 +33,11 @@ export const CONFIG = {
     zoomiesAnimBoost: 1.7, // gallop animation speed multiplier during Zoomies
   },
 
-  // Water stages: recurring themed stage of alternating land + long rivers.
-  // A stage is a water stage when stage >= firstAt and (stage - firstAt) % every == 0.
-  water: {
-    firstAt: 4,
-    every: 8,
-    riverDepth: 0.42,      // radians of water along the travel direction
-    spacing: 0.95,         // radians from one river front to the next
-    // Inverted hazard model: water is the hurtbox, the bridge lane is safe.
-    // The hazard zone starts BEFORE the water's literal edge and ends AFTER
-    // it, so being correctly positioned in advance (or lingering a beat on
-    // the far bank) is never fatal — no separate grace-timer bookkeeping.
-    approachBuffer: 0.14,  // rad of lead-in before the water where it's already "live"
-    exitBuffer: 0.08,      // rad of trailing slack after the water's far edge
-    safeLaneDist: 0.65,    // lane-units from the bridge center that count as "on it"
-  },
+  // Themed levels (see themes.js). Stages advance through the theme list in
+  // order, spending a random 2-4 stages in each before moving on, so a world
+  // has time to land before it changes.
+  themeStagesMin: 2,
+  themeStagesMax: 4,
 
   // Intro chase cutscene
   intro: {
@@ -102,14 +92,8 @@ export const COLORS = {
   ballSeam: 0xf7f7f0,
 };
 
-// Per-stage sky moods, cycled as stages advance: sunset → dusk → night → dawn.
-// Colors lerp smoothly over a couple seconds at each checkpoint.
-export const PALETTES = [
-  { sky: 0xffd29e, fog: 0xffc78f, hemi: 1.05, sun: 1.6 },  // sunset
-  { sky: 0xd493c1, fog: 0xc887b8, hemi: 0.9, sun: 1.25 },  // dusk
-  { sky: 0x2e3a6e, fog: 0x2a3260, hemi: 0.6, sun: 0.8 },   // night
-  { sky: 0xffe3ae, fog: 0xffd9a4, hemi: 1.1, sun: 1.5 },   // dawn
-];
+// Sky/ground moods now live per-theme in themes.js — each themed level brings
+// its own palette, lighting, ground color and scenery instead of a global cycle.
 
 // Shop: tennis balls buy cosmetics + chase targets. 'default' collar keeps
 // the breed's own color. Owned/equipped state persists in localStorage.

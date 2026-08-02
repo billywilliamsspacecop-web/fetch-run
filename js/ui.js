@@ -280,9 +280,14 @@ export class UI {
     this.el['btn-pause'].classList.remove('hidden');
   }
 
-  showStageBanner(stage, isWater = false) {
+  // themeLabel is set only when this checkpoint also enters a NEW themed
+  // world, so the banner announces the level change rather than just a number.
+  showStageBanner(stage, themeLabel = null) {
     const el = this.el['stage-banner'];
-    el.textContent = isWater ? `🌊 STAGE ${stage} 🌊` : `STAGE ${stage}`;
+    el.innerHTML = themeLabel
+      ? `STAGE ${stage}<span class="banner-sub">${themeLabel}</span>`
+      : `STAGE ${stage}`;
+    el.classList.toggle('with-theme', !!themeLabel);
     el.classList.remove('hidden');
     // Restart the pop animation
     el.style.animation = 'none';
@@ -317,7 +322,7 @@ export class UI {
   showDeath(game) {
     this._show('death');
     this.el['btn-pause'].classList.add('hidden');
-    this.el['death-title'].textContent = game.deathCause === 'splash' ? 'SPLASH!' : 'WIPEOUT!';
+    this.el['death-title'].textContent = 'WIPEOUT!';
     const d = Math.floor(game.distance);
     this.el['death-distance'].textContent = `${d}m`;
     this.el['death-best'].textContent = game.isNewBest ? 'NEW BEST!' : `best: ${game.best}m`;

@@ -252,6 +252,21 @@ html, body {
   animation: stagePop 2s ease-out forwards;
 }
 
+#stage-banner.with-theme {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.banner-sub {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #fff6e0;
+  text-shadow: 0 3px 0 rgba(120, 60, 0, 0.45);
+}
+
 @keyframes stagePop {
   0% { opacity: 0; transform: scale(0.4); }
   15% { opacity: 1; transform: scale(1.15); }

@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { CONFIG, COLORS } from './config.js';
+import { THEMES } from './themes.js';
+import * as P from './props.js';
 
 const R = CONFIG.planetRadius;
-
-const lambert = (color, opts = {}) =>
-  new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts });
 
 // Place `obj` on the globe surface: theta = angle along travel direction
 // (0 = top where the dog is, negative = ahead over the horizon),
@@ -21,108 +20,21 @@ export function laneAlpha(laneFloat) {
   return (2 - laneFloat) * CONFIG.laneAngle;
 }
 
-// Canopy materials are collected per-build so main can tint them per stage
-let canopyMats = [];
-
-function canopyLambert(color) {
-  const m = lambert(color);
-  canopyMats.push({ mat: m, base: new THREE.Color(color) });
-  return m;
-}
-
-function makeTree() {
-  const g = new THREE.Group();
-  const h = 0.7 + Math.random() * 0.5;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.18, h, 11), lambert(COLORS.trunk));
-  trunk.position.y = h / 2;
-  g.add(trunk);
-  const color = COLORS.canopy[Math.floor(Math.random() * COLORS.canopy.length)];
-  if (Math.random() < 0.35) {
-    // Pine
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.7, 1.6, 13), canopyLambert(color));
-    cone.position.y = h + 0.7;
-    g.add(cone);
-  } else {
-    // Round canopy, 1-2 blobs
-    const r1 = 0.55 + Math.random() * 0.35;
-    const c1 = new THREE.Mesh(new THREE.SphereGeometry(r1, 14, 11), canopyLambert(color));
-    c1.position.y = h + r1 * 0.75;
-    g.add(c1);
-    if (Math.random() < 0.5) {
-      const c2 = new THREE.Mesh(new THREE.SphereGeometry(r1 * 0.6, 12, 9), canopyLambert(color));
-      c2.position.set(0.35, h + r1 * 1.15, 0.1);
-      g.add(c2);
-    }
-    // Some trees carry little fruit for detail
-    if (Math.random() < 0.45) {
-      const fruitMat = lambert(Math.random() < 0.5 ? 0xd94f4f : 0xf0a030);
-      for (let f = 0; f < 3; f++) {
-        const a = Math.random() * Math.PI * 2;
-        const fruit = new THREE.Mesh(new THREE.SphereGeometry(0.07, 9, 7), fruitMat);
-        fruit.position.set(
-          Math.cos(a) * r1 * 0.85,
-          h + r1 * 0.75 + (Math.random() - 0.3) * r1 * 0.6,
-          Math.sin(a) * r1 * 0.85
-        );
-        g.add(fruit);
-      }
-    }
-  }
-  const s = 0.8 + Math.random() * 0.6;
-  g.scale.setScalar(s);
-  g.rotation.y = Math.random() * Math.PI * 2;
-  return g;
-}
-
-function makeBush() {
-  const b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.3 + Math.random() * 0.25, 12, 9),
-    lambert(COLORS.planetDark)
-  );
-  b.scale.y = 0.7;
-  return b;
-}
-
-function makeFlower() {
-  const g = new THREE.Group();
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.25, 8), lambert(0x4f8f3a));
-  stem.position.y = 0.12;
-  g.add(stem);
-  const colors = [0xffffff, 0xffd54f, 0xe57a8a, 0xb08ae5];
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(0.09, 10, 8),
-    lambert(colors[Math.floor(Math.random() * colors.length)])
-  );
-  head.position.y = 0.28;
-  g.add(head);
-  return g;
-}
-
-function makeCloud() {
-  const g = new THREE.Group();
-  const m = lambert(COLORS.cloud);
-  const sizes = [0.9, 0.65, 0.7];
-  const offs = [[0, 0, 0], [0.85, -0.1, 0.1], [-0.8, -0.15, -0.05]];
-  for (let i = 0; i < 3; i++) {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(sizes[i], 12, 9), m);
-    s.position.set(...offs[i]);
-    s.scale.y = 0.65;
-    g.add(s);
-  }
-  return g;
-}
-
-// Builds the whole static world. Returns { planetGroup, clouds, lights } —
-// planetGroup.rotation.x is the spin the game advances each frame; lights are
-// exposed so main can lerp them through the per-stage palettes.
+// Builds the whole world. Every theme's scenery is built once into its own
+// group; only the active theme's group is visible, so switching levels is a
+// visibility toggle rather than a rebuild (all primitives, cheap to hold).
 export function buildWorld(scene) {
-  canopyMats = [];
-  scene.background = new THREE.Color(COLORS.sky);
-  scene.fog = new THREE.Fog(COLORS.fog, 30, 58);
+  P.resetCanopyMats();
 
-  const hemi = new THREE.HemisphereLight(0xfff2dd, 0x6a9b4a, 1.05);
+  const first = THEMES[0];
+  scene.background = new THREE.Color(first.sky);
+  // Fog starts well past the play area — near enough to soften the horizon,
+  // far enough that obstacles and ground keep their color where it matters.
+  scene.fog = new THREE.Fog(first.fog, 36, 72);
+
+  const hemi = new THREE.HemisphereLight(0xfff2dd, 0x6a9b4a, first.hemi);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff1d6, 1.6);
+  const sun = new THREE.DirectionalLight(0xfff1d6, first.sun);
   // High and off to the side so shadows fall across the play area
   sun.position.set(14, 38, 16);
   sun.target.position.set(0, R - 2, 5);
@@ -157,31 +69,37 @@ export function buildWorld(scene) {
     pos.setXYZ(i, v.x, v.y, v.z);
   }
   geo.computeVertexNormals();
-  const planet = new THREE.Mesh(geo, lambert(COLORS.planet));
+  const planet = new THREE.Mesh(geo, P.lambert(first.planet));
   planet.receiveShadow = true;
   planetGroup.add(planet);
 
-  // Scatter scenery outside the lane band so the running path stays clear
+  // Per-theme scenery, scattered outside the lane band so the path stays clear
   const laneBand = 3.2 * CONFIG.laneAngle;
-  const scatter = (make, count, minAlpha, maxAlpha) => {
-    for (let i = 0; i < count; i++) {
-      const theta = Math.random() * Math.PI * 2;
-      const side = Math.random() < 0.5 ? -1 : 1;
-      const alpha = side * (minAlpha + Math.random() * (maxAlpha - minAlpha));
-      const obj = make();
-      obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-      planetGroup.add(surfacePivot(theta, alpha, obj));
+  const sceneryGroups = {};
+  for (const theme of THEMES) {
+    const group = new THREE.Group();
+    group.visible = theme.id === first.id;
+    for (const spec of theme.scenery) {
+      for (let i = 0; i < spec.count; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const span = spec.far - spec.near;
+        const alpha = side * (laneBand + spec.near + Math.random() * span);
+        const obj = spec.make();
+        obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        group.add(surfacePivot(theta, alpha, obj));
+      }
     }
-  };
-  // Portrait view only shows ~±0.4 rad of lateral surface, so keep scenery close
-  scatter(makeTree, 70, laneBand + 0.02, 0.55);
-  scatter(makeBush, 56, laneBand + 0.01, 0.6);
-  scatter(makeFlower, 70, laneBand, 0.45);
+    planetGroup.add(group);
+    sceneryGroups[theme.id] = group;
+  }
 
   // Lane-divider dashes ring the whole globe — they scroll with the spin and
   // sell the "world rolling toward you" feel. Instanced: one draw call.
   const dashGeo = new THREE.BoxGeometry(0.05, 0.02, 0.34);
-  const dashMat = new THREE.MeshBasicMaterial({ color: 0xa8dd78, transparent: true, opacity: 0.55 });
+  const dashMat = new THREE.MeshBasicMaterial({
+    color: first.dash, transparent: true, opacity: 0.55,
+  });
   const boundaries = [];
   for (let b = -2.5; b <= 2.5; b++) boundaries.push(b * CONFIG.laneAngle);
   const perRing = 46;
@@ -200,9 +118,10 @@ export function buildWorld(scene) {
   }
   planetGroup.add(dashes);
 
-  // Grass tufts inside the lane band — harmless ground texture underfoot
+  // Ground tufts inside the lane band — texture underfoot (grass, or floor
+  // grain indoors; the theme just retints them)
   const tuftGeo = new THREE.ConeGeometry(0.07, 0.16, 5);
-  const tuftMat = lambert(COLORS.planetDark);
+  const tuftMat = P.lambert(first.tuft);
   const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, 150);
   for (let i = 0; i < 150; i++) {
     const theta = Math.random() * Math.PI * 2;
@@ -217,7 +136,7 @@ export function buildWorld(scene) {
   // Clouds orbit slowly at lateral offsets so they never hit the camera
   const clouds = [];
   for (let i = 0; i < 7; i++) {
-    const cloud = makeCloud();
+    const cloud = P.scCloud();
     const side = i % 2 === 0 ? -1 : 1;
     const alpha = side * (0.35 + Math.random() * 0.75);
     const pivot = surfacePivot(Math.random() * Math.PI * 2, alpha, cloud, R + 6 + Math.random() * 4);
@@ -227,25 +146,22 @@ export function buildWorld(scene) {
   }
 
   // Low warm sun in the sky (unaffected by fog)
-  const sun2 = new THREE.Mesh(
+  const sunDisc = new THREE.Mesh(
     new THREE.CircleGeometry(5.5, 24),
     new THREE.MeshBasicMaterial({ color: 0xffeec4, fog: false })
   );
-  sun2.position.set(-13, 34, -42);
-  sun2.lookAt(0, R + 5, 8.6);
-  scene.add(sun2);
+  sunDisc.position.set(-13, 34, -42);
+  sunDisc.lookAt(0, R + 5, 8.6);
+  scene.add(sunDisc);
 
   return {
-    planetGroup, clouds, lights: { hemi, sun },
-    tintables: { planetMat: planet.material, canopyMats },
+    planetGroup, clouds, sunDisc, sceneryGroups, tufts,
+    lights: { hemi, sun },
+    tintables: {
+      planetMat: planet.material,
+      tuftMat,
+      dashMat,
+      canopyMats: P.getCanopyMats(),
+    },
   };
 }
-
-// Per-stage environment moods: planet green + a color the tree canopies are
-// pulled toward (and how strongly). Indexes match PALETTES.
-export const STAGE_TINTS = [
-  { planet: 0x7ec850, canopy: null, mix: 0 },          // sunset: natural
-  { planet: 0x6db54e, canopy: 0xc87bd8, mix: 0.22 },   // dusk: violet wash
-  { planet: 0x46704f, canopy: 0x3a4d8f, mix: 0.45 },   // night: moonlit blues
-  { planet: 0x8fd05a, canopy: 0xffd98a, mix: 0.3 },    // dawn: gold-lit
-];

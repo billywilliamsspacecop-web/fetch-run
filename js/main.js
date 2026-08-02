@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { CONFIG, PALETTES } from './config.js';
-import { buildWorld, STAGE_TINTS } from './world.js';
+import { CONFIG } from './config.js';
+import { buildWorld } from './world.js';
+import { THEMES } from './themes.js';
 import { buildDog } from './dog.js';
 import { buildChase } from './squirrel.js';
 import { FX } from './fx.js';
@@ -84,7 +85,7 @@ window.addEventListener('resize', () => {
 });
 
 // --- world + dog + fx ---
-const { planetGroup, clouds, lights, tintables } = buildWorld(scene);
+const { planetGroup, clouds, sunDisc, sceneryGroups, tufts, lights, tintables } = buildWorld(scene);
 const fx = new FX(scene);
 
 // Cool fill light from the shade side keeps the dark GSP/cat readable
@@ -152,56 +153,69 @@ window.__game = game; // debug/test handle
 const debugOn = new URLSearchParams(location.search).has('debug');
 const debugEl = document.getElementById('debug-overlay');
 if (debugOn) debugEl.classList.remove('hidden');
-let lastDt = 0, lastFrameMs = 0;
+let lastFrameMs = 0;
 function updateDebugOverlay(dt) {
   if (!debugOn) return;
-  lastDt = dt;
   lastFrameMs = dt * 1000;
   const g = game;
   const dogT = CONFIG.dogTheta;
-  const river = g.spawner?.entities.find((e) => e.isRiver);
-  let riverInfo = 'no river nearby';
-  if (river) {
-    const cur = g.spin + river.theta0 - dogT;
-    const { approachBuffer, exitBuffer, safeLaneDist } = CONFIG.water;
-    const inHazard = cur > -approachBuffer && cur < river.depth + exitBuffer;
-    const onBridge = Math.abs(g.lane - river.bridgeLane) <= safeLaneDist;
-    riverInfo =
-      `river cur=${cur.toFixed(3)} depth=${river.depth} bridgeLane=${river.bridgeLane}\n` +
-      `inHazardZone=${inHazard}  onBridge=${onBridge}  ${inHazard && !onBridge ? '*** WOULD DIE ***' : 'safe'}`;
+  // Nearest obstacle ahead, and how close it is to the runner's line
+  let nearest = null;
+  for (const e of g.spawner?.entities ?? []) {
+    if (!e.hitbox) continue;
+    const cur = g.spin + e.theta0 - dogT;
+    if (cur > 0.05) continue;
+    if (!nearest || cur > nearest.cur) nearest = { cur, lane: e.lane };
   }
   debugEl.textContent =
-    `state=${g.state} stage=${g.stage} water=${g.isWaterStage} stageBridgeLane=${g.waterStageBridgeLane}\n` +
-    `lane=${g.lane?.toFixed(3)} targetLane=${g.targetLane} sqLane=${g.sqLane?.toFixed(2)} sqTarget=${g.sqTargetLane}\n` +
+    `state=${g.state} stage=${g.stage} theme=${g.theme?.id} (${g.stagesLeftInTheme} left)\n` +
+    `lane=${g.lane?.toFixed(3)} targetLane=${g.targetLane} sqLane=${g.sqLane?.toFixed(2)}\n` +
     `frameMs=${lastFrameMs.toFixed(1)} fps=${(1000 / lastFrameMs).toFixed(0)} entities=${g.spawner?.entities.length ?? 0}\n` +
-    riverInfo;
+    (nearest
+      ? `nearest obstacle: lane=${nearest.lane} dist=${nearest.cur.toFixed(3)} laneGap=${Math.abs(nearest.lane - g.lane).toFixed(2)}`
+      : 'no obstacle near');
 }
 
-// --- per-stage sky palette lerping ---
+// --- themed level transitions ---
+// Colors/lighting cross-fade smoothly; the scenery swap is a discrete
+// visibility toggle the moment the theme changes (all groups are prebuilt).
 const paletteState = {
-  sky: new THREE.Color(PALETTES[0].sky),
-  fog: new THREE.Color(PALETTES[0].fog),
+  sky: new THREE.Color(THEMES[0].sky),
+  fog: new THREE.Color(THEMES[0].fog),
 };
 const _tmpColor = new THREE.Color();
-function lerpPalette(dt) {
-  const idx = game.state === 'running' ? game.paletteIndex : 0;
-  const target = PALETTES[idx];
-  const tint = STAGE_TINTS[idx];
+let shownThemeId = THEMES[0].id;
+
+function applyThemeSwap(theme) {
+  for (const [id, grp] of Object.entries(sceneryGroups)) grp.visible = id === theme.id;
+  // Indoors there's no sky to see — hide the clouds and the sun disc
+  for (const c of clouds) c.visible = theme.outdoor;
+  sunDisc.visible = theme.outdoor;
+  // Grass tufts only make sense on natural ground, not courts or floors
+  tufts.visible = theme.tufts !== false;
+  shownThemeId = theme.id;
+}
+
+function lerpTheme(dt) {
+  const theme = game.state === 'menu' ? THEMES[0] : game.theme;
+  if (theme.id !== shownThemeId) applyThemeSwap(theme);
+
   const k = 1 - Math.exp(-dt * 1.5);
-  paletteState.sky.lerp(new THREE.Color(target.sky), k);
-  paletteState.fog.lerp(new THREE.Color(target.fog), k);
+  paletteState.sky.lerp(_tmpColor.set(theme.sky), k);
+  paletteState.fog.lerp(_tmpColor.set(theme.fog), k);
   scene.background.copy(paletteState.sky);
   scene.fog.color.copy(paletteState.fog);
-  lights.hemi.intensity += (target.hemi - lights.hemi.intensity) * k;
-  lights.sun.intensity += (target.sun - lights.sun.intensity) * k;
+  lights.hemi.intensity += (theme.hemi - lights.hemi.intensity) * k;
+  lights.sun.intensity += (theme.sun - lights.sun.intensity) * k;
 
-  // Environment mood: planet green + tree canopies pulled toward the stage hue
-  tintables.planetMat.color.lerp(_tmpColor.set(tint.planet), k);
+  tintables.planetMat.color.lerp(_tmpColor.set(theme.planet), k);
+  tintables.tuftMat.color.lerp(_tmpColor.set(theme.tuft), k);
+  tintables.dashMat.color.lerp(_tmpColor.set(theme.dash), k);
   for (const c of tintables.canopyMats) {
-    const targetC = tint.canopy
-      ? _tmpColor.copy(c.base).lerp(new THREE.Color(tint.canopy), tint.mix)
+    const target = theme.canopyTint
+      ? _tmpColor.copy(c.base).lerp(new THREE.Color(theme.canopyTint), theme.canopyMix)
       : _tmpColor.copy(c.base);
-    c.mat.color.lerp(targetC, k);
+    c.mat.color.lerp(target, k);
   }
 }
 
@@ -252,7 +266,7 @@ function frame(now) {
   if (chasing) squirrel.animate(animNow / 1000, animSpeed);
   game.spawner.animate(animNow / 1000);
   for (const c of clouds) c.rotation.x += c.userData.speed * dt;
-  lerpPalette(dt);
+  lerpTheme(dt);
   fx.update(dt);
 
   if (prevState !== 'dead' && game.state === 'dead') shakeT = 0.5;

@@ -1,8 +1,9 @@
 import { Vector3 } from 'three';
-import { CONFIG, PALETTES } from './config.js';
-import { laneAlpha } from './world.js';
-import { Spawner, makeFence } from './obstacles.js';
-import { surfacePivot } from './world.js';
+import { CONFIG } from './config.js';
+import { laneAlpha, surfacePivot } from './world.js';
+import { Spawner } from './obstacles.js';
+import { THEMES } from './themes.js';
+import { makeFence } from './fence.js';
 
 const _v = new Vector3();
 
@@ -27,6 +28,11 @@ export class Game {
     input.onAction = () => this.handleScreenTap();
   }
 
+  _rollThemeStages() {
+    const { themeStagesMin: a, themeStagesMax: b } = CONFIG;
+    return a + Math.floor(Math.random() * (b - a + 1));
+  }
+
   _reset() {
     this.paused = false;
     this.time = 0;
@@ -46,8 +52,11 @@ export class Game {
     this.power = null;      // { type, timeLeft }
     this.extraLife = false; // steak held (non-stacking)
     this.invulnTimer = 0;   // grace after a steak save
-    this.nextWaterAt = Infinity; // spin value that triggers the next river
-    this.waterStageBridgeLane = null; // fixed for the whole current water stage
+    // Themed levels: start in the first theme, move on after 2-4 stages
+    this.themeIndex = 0;
+    this.theme = THEMES[0];
+    this.stagesLeftInTheme = this._rollThemeStages();
+    this.spawner.setTheme(this.theme);
     // Squirrel chase state
     this.sqLane = 2;
     this.sqTargetLane = 2;
@@ -157,8 +166,7 @@ export class Game {
 
     // Squirrel sprints from just behind the runner up to its chase spot
     const ease = 1 - Math.pow(1 - p, 2.2);
-    const sqTheta =
-      (CONFIG.dogTheta + 0.22) * (1 - ease) + CONFIG.squirrelTheta * ease;
+    const sqTheta = (CONFIG.dogTheta + 0.22) * (1 - ease) + CONFIG.squirrelTheta * ease;
     this.squirrelPivot.rotation.x = sqTheta;
     this.squirrelPivot.rotation.z = laneAlpha(2);
 
@@ -179,18 +187,20 @@ export class Game {
     this.bonus += (mult - 1) * this.speed * CONFIG.metersPerRadian * dt;
     this.distance = this.spin * CONFIG.metersPerRadian + this.bonus;
 
-    // Stage checkpoints
+    // Stage checkpoints — and every 2-4 stages, a whole new themed world
     const stageNow = 1 + Math.floor(this.distance / CONFIG.stageLength);
     if (stageNow > this.stage) {
       this.stage = stageNow;
-      const water = this.isWaterStage;
-      this.ui.showStageBanner(this.stage, water);
-      // Water stages alternate land chunks with long rivers. One bridge
-      // lane for the ENTIRE stage — re-rolling per river meant crossing
-      // river 1 safely, settling in, then river 2 silently putting the
-      // bridge somewhere else with zero warning. Pick once, stay simple.
-      this.nextWaterAt = water ? this.spin + 0.4 : Infinity;
-      this.waterStageBridgeLane = water ? Math.floor(Math.random() * CONFIG.lanes) : null;
+      this.stagesLeftInTheme -= 1;
+      let newTheme = null;
+      if (this.stagesLeftInTheme <= 0) {
+        this.themeIndex = (this.themeIndex + 1) % THEMES.length;
+        this.theme = THEMES[this.themeIndex];
+        this.stagesLeftInTheme = this._rollThemeStages();
+        this.spawner.setTheme(this.theme);
+        newTheme = this.theme.label;
+      }
+      this.ui.showStageBanner(this.stage, newTheme);
     }
     this.speed = Math.min(
       CONFIG.maxSpeed,
@@ -213,18 +223,11 @@ export class Game {
     // Squirrel dodges on its own up at the crest
     this._updateSquirrel(dt);
 
-    // Spawning: on water stages, long rivers on a fixed cadence with normal
-    // rows on the land chunks between them; otherwise normal/yarn rows.
+    // Spawning
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      const rowTheta0 = -CONFIG.spawnAheadAngle - this.spin;
-      if (this.isWaterStage && this.spin >= this.nextWaterAt) {
-        this.spawner.spawnRiver(this.spin, CONFIG.water.riverDepth, this.waterStageBridgeLane);
-        this.nextWaterAt = this.spin + CONFIG.water.spacing;
-      } else if (!this._rowLandsInWater(rowTheta0)) {
-        if (this.power?.type === 'yarn') this.spawner.spawnBallRow(this.spin);
-        else this.spawner.spawnRow(this.spin);
-      }
+      if (this.power?.type === 'yarn') this.spawner.spawnBallRow(this.spin);
+      else this.spawner.spawnRow(this.spin);
       const t = (this.speed - CONFIG.baseSpeed) / (CONFIG.maxSpeed - CONFIG.baseSpeed);
       this.spawnTimer =
         CONFIG.spawnBaseInterval - t * (CONFIG.spawnBaseInterval - CONFIG.spawnMinInterval);
@@ -239,7 +242,7 @@ export class Game {
       let laneDist = Math.abs(e.lane - this.lane);
 
       if (e.isBall) {
-        // Ball Magnet: physically warp balls toward the runner
+        // Ball Magnet: physically warp collectibles toward the runner
         if (magnet && !e.collected && Math.abs(cur) < CONFIG.powerups.magnetWindow &&
             laneDist < CONFIG.powerups.magnetLaneDist) {
           const pull = Math.min(1, CONFIG.powerups.magnetPull * dt);
@@ -274,26 +277,11 @@ export class Game {
           this.ui.updateHUD(this);
           continue;
         }
-      } else if (e.isRiver) {
-        // Inverted model: the WATER is the hurtbox, the BRIDGE is safe by
-        // default. The hazard zone starts CONFIG.water.approachBuffer before
-        // the water's literal leading edge and ends riverExitBuffer after
-        // its trailing edge — so if you're already on the bridge lane, you
-        // are safe before you're even wet, and staying on it a beat past
-        // the far bank is never fatal either. Bridge tolerance is generous
-        // and applies uniformly; no separate grace-timer/committed-lane
-        // bookkeeping needed once the hazard window itself has slack.
-        const { approachBuffer, exitBuffer, safeLaneDist } = CONFIG.water;
-        const inHazardZone = cur > -approachBuffer && cur < e.depth + exitBuffer;
-        const onBridge = Math.abs(this.lane - e.bridgeLane) <= safeLaneDist;
-        if (inHazardZone && !onBridge && !this._survivesHit(e, 'splash')) return;
-        if (cur > e.depth + CONFIG.despawnBehindAngle) this.spawner.remove(e);
-        continue;
       } else {
         const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
         const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
         if (Math.abs(cur) < hitAng && laneDist < hitLat) {
-          if (!this._survivesHit(e, 'wipeout')) return;
+          if (!this._survivesHit(e)) return;
           continue;
         }
         if (prev < 0 && cur >= 0 && laneDist < CONFIG.nearMissLaneDist) {
@@ -308,30 +296,15 @@ export class Game {
     this.ui.updateHUD(this);
   }
 
-  get isWaterStage() {
-    const { firstAt, every } = CONFIG.water;
-    return this.stage >= firstAt && (this.stage - firstAt) % every === 0;
-  }
-
-  // Would a row spawned at this theta0 land inside an active river span?
-  _rowLandsInWater(rowTheta0) {
-    return this.spawner.entities.some(
-      (e) => e.isRiver &&
-        rowTheta0 > e.theta0 - e.depth - 0.14 &&
-        rowTheta0 < e.theta0 + 0.14
-    );
-  }
-
   // Returns true if the runner survives contact (zoomies / steak / grace).
   // On true death, calls _die and returns false.
-  _survivesHit(e, cause) {
+  _survivesHit(e) {
     if (this.invulnTimer > 0) return true;
     if (this.power?.type === 'zoomies') {
-      if (!e.isRiver) {
-        e.group.getWorldPosition(_v);
-        this.fx?.crash(_v);
-        this.spawner.remove(e);
-      }
+      // Invincible: plow straight through
+      e.group.getWorldPosition(_v);
+      this.fx?.crash(_v);
+      this.spawner.remove(e);
       return true;
     }
     if (this.extraLife) {
@@ -339,11 +312,11 @@ export class Game {
       this.invulnTimer = 1.5;
       this.dogPivot.children[0]?.getWorldPosition(_v);
       this.fx?.crash(_v);
-      if (!e.isRiver) this.spawner.remove(e);
+      this.spawner.remove(e);
       this.ui.updateHUD(this);
       return true;
     }
-    this._die(cause);
+    this._die();
     return false;
   }
 
@@ -351,30 +324,12 @@ export class Game {
     const sqT = CONFIG.squirrelTheta;
     // Threat scan: anything about to cross the squirrel's line
     const danger = new Array(CONFIG.lanes).fill(0);
-    let bridgeLane = null;
-    let bridgeDist = Infinity;
     for (const e of this.spawner.entities) {
       const cur = this.spin + e.theta0 - sqT;
-      if (e.isRiver) {
-        // The quarry always takes the bridge: lock on well before the front
-        // (generous lead so it's visibly ON the bridge, not scrambling for
-        // it) and hold until clearly past the far bank. If two rivers'
-        // windows ever overlap, track the nearer one, not whichever
-        // happened to come last in the entity list.
-        const lockOnAt = 0.35 + CONFIG.water.approachBuffer;
-        const releaseAt = e.depth + CONFIG.water.exitBuffer;
-        if (cur > -lockOnAt && cur < releaseAt && Math.abs(cur) < bridgeDist) {
-          bridgeLane = e.bridgeLane;
-          bridgeDist = Math.abs(cur);
-        }
-        continue;
-      }
       if (cur < -0.35 || cur > 0.04) continue;
       if (!e.isBall && !e.isPower) danger[e.lane] += cur > -0.12 ? 10 : 3;
     }
-    if (bridgeLane !== null) {
-      this.sqTargetLane = bridgeLane;
-    } else if (danger[this.sqTargetLane] > 0) {
+    if (danger[this.sqTargetLane] > 0) {
       const lanes = [...Array(CONFIG.lanes).keys()].sort(
         (a, b) =>
           danger[a] - danger[b] ||
@@ -389,18 +344,12 @@ export class Game {
     this.squirrelPivot.rotation.z = laneAlpha(this.sqLane);
   }
 
-  // Current palette index for the sky mood (main lerps toward it each frame)
-  get paletteIndex() {
-    return (this.stage - 1) % PALETTES.length;
-  }
-
-  _die(cause = 'wipeout') {
+  _die() {
     this.state = 'dead';
-    this.deathCause = cause;
+    this.deathCause = 'wipeout';
     this.deathTimer = 0;
     this.dogPivot.children[0]?.getWorldPosition(_v);
-    if (cause === 'splash') this.fx?.splash(_v);
-    else this.fx?.crash(_v);
+    this.fx?.crash(_v);
     const d = Math.floor(this.distance);
     this.isNewBest = d > this.best && d > 0;
     if (this.isNewBest) {

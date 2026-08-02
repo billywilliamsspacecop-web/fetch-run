@@ -65,12 +65,6 @@ export class FX {
     this._spawn(pos, { color: 0xffffff, count: 6, speed: 1.6, up: 2.0, life: 0.5, size: 0.9 });
   }
 
-  // Splash into the river
-  splash(pos) {
-    this._spawn(pos, { color: 0x8fd3f4, count: 20, speed: 2.6, up: 3.2, life: 0.7, size: 1.2 });
-    this._spawn(pos, { color: 0xffffff, count: 8, speed: 1.8, up: 2.6, life: 0.5, size: 0.8 });
-  }
-
   // Zoomies wind streaks: fly backward past the runner
   speedLine(pos) {
     this._spawn(pos, {
