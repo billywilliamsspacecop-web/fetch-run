@@ -47,7 +47,7 @@ export function calibrateHitboxes() {
   const laneWidthUnits = CONFIG.laneAngle * R;
   const maxHalfW = (MAX_OBSTACLE_LANE_FRACTION / 2) * laneWidthUnits;
   maxObstacleHalfRad = 0.03;
-  for (const theme of THEMES) {
+  for (const theme of ALL_THEMES) {
     for (const o of theme.obstacles) {
       const { halfW, halfD } = measureHalfExtents(o.make);
       // Shrink oversized props to fit their lane; Spawner applies fitScale.
@@ -166,6 +166,7 @@ export const THEMES = [
     sky: 0xe4d3ba, fog: 0xd6c1a4, hemi: 1.0, sun: 1.15,
     planet: 0xb08a5a, tuft: 0x9a7448, dash: 0xc9a578, // wood floor + planks
     tufts: false, // no grass growing out of the living room rug
+    gate: true,   // you enter this world by bursting through its front door
     canopyTint: null, canopyMix: 0,
     collectible: P.collectSock,
     obstacles: [
@@ -179,7 +180,9 @@ export const THEMES = [
       // Evenly spaced on BOTH sides so segments butt together into an
       // unbroken hallway. count is chosen so arc-length per segment
       // (2*PI*R / count) is just under HOUSE_WALL_LEN, giving slight overlap.
-      { make: P.scHouseWall, count: 50, near: 0.005, far: 0, even: true, bothSides: true },
+      // `near` pushes the walls out past the minimum clearance — hugging the
+      // lanes too tightly made the room feel like a narrow chute.
+      { make: P.scHouseWall, count: 50, near: 0.085, far: 0, even: true, bothSides: true },
       { make: P.scBookshelf, count: 14, near: 0.05, far: 0.3 },
       { make: P.scFloorLamp, count: 14, near: 0.04, far: 0.3 },
       { make: P.scHousePlant, count: 20, near: 0.02, far: 0.35 },
@@ -187,4 +190,84 @@ export const THEMES = [
   },
 ];
 
-export const themeById = (id) => THEMES.find((t) => t.id === id) ?? THEMES[0];
+// ---------------------------------------------------------------------------
+// ULTRA-RARE STAGES. These are NOT part of the normal rotation — when a theme
+// block ends there's a small chance (CONFIG.rareChance) of dropping into one
+// of these instead. They always last exactly one stage, so they stay a
+// surprise rather than an endurance test.
+// ---------------------------------------------------------------------------
+export const RARE_THEMES = [
+  {
+    id: 'heaven',
+    label: 'THE GOOD PLACE',
+    rare: true,
+    outdoor: true,
+    sky: 0xdfeeff, fog: 0xeef6ff, hemi: 1.55, sun: 1.95,
+    planet: 0xf4f7ff, tuft: 0xe4ecf8, dash: 0xffe9a0,
+    tufts: false,
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectTennisBall,
+    obstacles: [
+      { make: P.obCloudBank },
+      { make: P.obHarp },
+      { make: P.obPillar },
+      { make: P.obGate },
+    ],
+    scenery: [
+      { make: P.scHeavenCloud, count: 54, near: 0.01, far: 0.5 },
+      { make: P.scHalo, count: 22, near: 0.03, far: 0.4 },
+      { make: P.obPillar, count: 26, near: 0.06, far: 0.45 },
+    ],
+  },
+  {
+    id: 'space',
+    label: 'DEEP SPACE',
+    rare: true,
+    outdoor: false, // no clouds or sun disc — stars instead
+    ships: true,    // runner + quarry fly little spaceships here
+    sky: 0x07060f, fog: 0x0b0918, hemi: 0.6, sun: 1.0,
+    planet: 0x2c2743, tuft: 0x3a3457, dash: 0x9a86f0,
+    tufts: false,
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectTennisBall,
+    obstacles: [
+      { make: P.obAsteroid },
+      { make: P.obSatellite },
+      { make: P.obSpaceRock },
+      { make: P.obUFO },
+    ],
+    scenery: [
+      { make: P.scStar, count: 130, near: 0, far: 0.6 },
+      { make: P.scSpacePlanet, count: 12, near: 0.22, far: 0.55 },
+    ],
+  },
+  {
+    id: 'hell',
+    label: 'THE BAD PLACE',
+    rare: true,
+    outdoor: false,
+    sky: 0x2c0b08, fog: 0x400f0a, hemi: 0.75, sun: 1.05,
+    planet: 0x4d2119, tuft: 0x351610, dash: 0xff7a2a,
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectTennisBall,
+    obstacles: [
+      { make: P.obLavaRock },
+      { make: P.obPitchfork },
+      { make: P.obFireGeyser },
+      { make: P.obDemonGnome },
+    ],
+    scenery: [
+      { make: P.scStalagmite, count: 62, near: 0.01, far: 0.5 },
+      { make: P.scLavaPool, count: 26, near: 0.05, far: 0.45 },
+      { make: P.scTorch, count: 24, near: 0.02, far: 0.35 },
+    ],
+  },
+];
+
+// Everything that needs hitbox calibration and prebuilt scenery groups
+export const ALL_THEMES = [...THEMES, ...RARE_THEMES];
+
+export const pickRareTheme = () =>
+  RARE_THEMES[Math.floor(Math.random() * RARE_THEMES.length)];
+
+export const themeById = (id) => ALL_THEMES.find((t) => t.id === id) ?? THEMES[0];

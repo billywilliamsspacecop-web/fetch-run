@@ -250,15 +250,24 @@ html, body {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
+/* Powers stack, so this is a row of pills that grows rather than one slot */
 #hud-power {
   margin-top: 6px;
-  padding: 4px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 5px;
+  max-width: 92vw;
+}
+
+#hud-power .pw {
+  padding: 3px 11px;
   border-radius: 999px;
-  background: rgba(255, 213, 79, 0.9);
+  background: rgba(255, 213, 79, 0.92);
   color: #402a10;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 900;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
@@ -294,6 +303,19 @@ html, body {
   paint-order: stroke fill;
 }
 
+/* Rare stages announce themselves — brighter, held a beat longer */
+#stage-banner.rare {
+  color: rgba(255, 255, 255, 0.95);
+  -webkit-text-stroke: 2px rgba(120, 60, 160, 0.6);
+  animation: stagePop 2.4s ease-out forwards;
+}
+
+#stage-banner.rare .banner-sub {
+  color: rgba(255, 236, 140, 0.95);
+  -webkit-text-stroke: 1.2px rgba(120, 60, 160, 0.55);
+  letter-spacing: 5px;
+}
+
 @keyframes stagePop {
   0% { opacity: 0; transform: scale(0.4); }
   15% { opacity: 1; transform: scale(1.15); }
@@ -302,18 +324,57 @@ html, body {
   100% { opacity: 0; transform: scale(1); }
 }
 
-#flash {
+/* Level transitions. The old full-screen white flash read as a camera
+   strobe — bright, abrupt, and it hid oncoming obstacles at exactly the
+   wrong moment. These are directional and edge-weighted instead, so the
+   centre of the screen (where you're dodging) stays clear. */
+.transition {
   position: fixed;
   inset: 0;
-  background: #fff;
   pointer-events: none;
   z-index: 20;
-  animation: flashFade 0.45s ease-out forwards;
 }
 
-@keyframes flashFade {
-  0% { opacity: 0.3; }
+/* Plain checkpoint: soft vignette breathing in from the edges */
+.transition.pulse {
+  background: radial-gradient(circle at 50% 55%,
+    rgba(255, 255, 255, 0) 45%, rgba(255, 248, 220, 0.5) 100%);
+  animation: pulseFade 0.6s ease-out forwards;
+}
+
+@keyframes pulseFade {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/* New world: a bright ring sweeps outward from the horizon line, like
+   passing through a threshold. Centre stays readable throughout. */
+.transition.iris {
+  background: radial-gradient(circle at 50% 42%,
+    rgba(255, 252, 235, 0) 0%,
+    rgba(255, 252, 235, 0) 32%,
+    rgba(255, 250, 225, 0.85) 42%,
+    rgba(255, 250, 225, 0) 58%,
+    rgba(255, 250, 225, 0) 100%);
+  animation: irisSweep 1.1s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+}
+
+.transition.iris.rare {
+  background: radial-gradient(circle at 50% 42%,
+    rgba(230, 220, 255, 0) 0%,
+    rgba(230, 220, 255, 0) 30%,
+    rgba(214, 190, 255, 0.9) 41%,
+    rgba(255, 236, 160, 0.55) 50%,
+    rgba(214, 190, 255, 0) 62%,
+    rgba(214, 190, 255, 0) 100%);
+  animation: irisSweep 1.3s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+}
+
+@keyframes irisSweep {
+  0% { transform: scale(0.15); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: scale(3.2); opacity: 0; }
 }
 
 /* --- death / results card --- */

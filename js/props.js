@@ -1485,3 +1485,59 @@ export function makeShip(tint = 0xd8dde6, accent = 0xe8622e) {
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
+
+// ===================== DOOR GATE (entering the house) =====================
+// A wall spanning the track with one or two lanes left as doors. Hitting a
+// panel is a wipeout; picking a door bursts you through into the house.
+
+export function obDoorPanel() {
+  const g = new THREE.Group();
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.9, 0.16), lambert(0xe0d2bb));
+  panel.position.y = 0.95;
+  g.add(panel);
+  // Siding lines so it reads as an exterior wall, not a blank slab
+  for (const y of [0.4, 0.9, 1.4]) {
+    const line = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.05, 0.19), lambert(0xcbbba2));
+    line.position.y = y;
+    g.add(line);
+  }
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.18, 0.22), lambert(0xb9a68c));
+  base.position.y = 0.09;
+  g.add(base);
+  return g;
+}
+
+export function makeDoorway() {
+  const g = new THREE.Group();
+  // Frame
+  const frameMat = lambert(0x8a5f3a);
+  for (const sx of [-1, 1]) {
+    const jamb = new THREE.Mesh(new THREE.BoxGeometry(0.13, 1.9, 0.22), frameMat);
+    jamb.position.set(sx * 0.46, 0.95, 0);
+    g.add(jamb);
+  }
+  const lintel = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.16, 0.22), frameMat);
+  lintel.position.y = 1.92;
+  g.add(lintel);
+  // The door itself — hinged, swung ajar and glowing invitingly
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.82, 1.8, 0.09), lambert(0xa8623c));
+  door.position.set(-0.3, 0.9, 0.22);
+  door.rotation.y = 0.75;
+  g.add(door);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), lambert(0xf0d47a));
+  knob.position.set(0.02, 0.92, 0.42);
+  g.add(knob);
+  // Warm light spilling out of the opening — reads instantly as "go here"
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.85, 1.8),
+    new THREE.MeshBasicMaterial({
+      color: 0xffdf9a, transparent: true, opacity: 0.5,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+      side: THREE.DoubleSide,
+    })
+  );
+  glow.position.y = 0.9;
+  g.add(glow);
+  g.userData.glow = glow;
+  return g;
+}

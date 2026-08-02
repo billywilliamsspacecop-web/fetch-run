@@ -4,6 +4,7 @@ import { buildWorld } from './world.js';
 import { THEMES, calibrateHitboxes } from './themes.js';
 import { buildDog } from './dog.js';
 import { buildChase } from './squirrel.js';
+import { makeShip } from './props.js';
 import { FX } from './fx.js';
 import { Input } from './input.js';
 import { UI } from './ui.js';
@@ -137,7 +138,29 @@ charSelect.onChange = (key, breed) => {
   dogCarrier.remove(dog.group);
   dog = buildDog(key, getEquip());
   dogCarrier.add(dog.group);
+  applyShips(dogRiding);
 };
+// Space stage: both runners get a little ship. The characters aren't
+// replaced — they ride inside, so your chosen runner is still visible.
+const dogShip = makeShip(0xd8dde6, 0xe8622e);
+dogShip.visible = false;
+dogCarrier.add(dogShip);
+const sqShip = makeShip(0xc8d8e8, 0x4fb8a0);
+sqShip.scale.setScalar(0.72);
+sqShip.visible = false;
+squirrelCarrier.add(sqShip);
+
+function applyShips(on) {
+  dogShip.visible = on;
+  sqShip.visible = on;
+  // Riders sit up in the cockpit while flying
+  dog.group.position.z = on ? 0.12 : 0;
+  squirrel.group.position.z = on ? 0.1 : 0;
+  dogRiding = on;
+}
+let dogRiding = false;
+game.onThemeChange = (theme) => applyShips(!!theme.ships);
+
 ui.onSelectOpen = (key) => charSelect.show(key);
 ui.onSelectClose = () => charSelect.hide();
 ui.onSelectStep = (dir) => charSelect.step(dir);
@@ -149,6 +172,7 @@ ui.onCosmeticsChange = (equip) => {
   squirrelCarrier.remove(squirrel.group);
   squirrel = buildChase(equip.chase || 'squirrel');
   squirrelCarrier.add(squirrel.group);
+  applyShips(dogRiding); // re-seat riders if we're mid-space-stage
 };
 window.__game = game; // debug/test handle
 
@@ -275,6 +299,15 @@ function frame(now) {
   for (const c of clouds) c.rotation.x += c.userData.speed * dt;
   lerpTheme(dt);
   fx.update(dt);
+
+  if (dogRiding) {
+    const flick = 0.85 + Math.sin(animNow / 40) * 0.15;
+    dogShip.userData.thruster.scale.set(flick, 1, flick);
+    sqShip.userData.thruster.scale.set(flick, 1, flick);
+    // Ships bank into lane changes instead of a four-legged gallop lean
+    dogShip.rotation.z = THREE.MathUtils.clamp((game.targetLane - game.lane) * 0.45, -0.5, 0.5);
+    dogShip.position.y = Math.sin(animNow / 260) * 0.06;
+  }
 
   if (prevState !== 'dead' && game.state === 'dead') shakeT = 0.5;
   prevState = game.state;

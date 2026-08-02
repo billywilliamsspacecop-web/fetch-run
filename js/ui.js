@@ -295,22 +295,28 @@ export class UI {
 
   // themeLabel is set only when this checkpoint also enters a NEW themed
   // world, so the banner announces the level change rather than just a number.
-  showStageBanner(stage, themeLabel = null) {
+  showStageBanner(stage, themeLabel = null, rare = false) {
     const el = this.el['stage-banner'];
+    const mark = rare ? '✦' : '';
     el.innerHTML = themeLabel
-      ? `STAGE ${stage}<span class="banner-sub">${themeLabel}</span>`
+      ? `STAGE ${stage}<span class="banner-sub">${mark} ${themeLabel} ${mark}</span>`
       : `STAGE ${stage}`;
     el.classList.toggle('with-theme', !!themeLabel);
+    el.classList.toggle('rare', !!rare);
     el.classList.remove('hidden');
     // Restart the pop animation
     el.style.animation = 'none';
     void el.offsetWidth;
     el.style.animation = '';
-    // Quick white checkpoint flash
-    const flash = document.createElement('div');
-    flash.id = 'flash';
-    document.body.appendChild(flash);
-    setTimeout(() => flash.remove(), 500);
+    // Transition. A full-screen white strobe read as a distracting camera
+    // flash, so: a plain checkpoint gets a soft edge-vignette pulse, and a
+    // WORLD change gets a tinted iris sweeping outward from the horizon —
+    // motion that suggests travelling into somewhere new rather than a blink.
+    const fx = document.createElement('div');
+    fx.className = themeLabel ? 'transition iris' : 'transition pulse';
+    if (rare) fx.classList.add('rare');
+    document.body.appendChild(fx);
+    setTimeout(() => fx.remove(), themeLabel ? 1100 : 600);
   }
 
   updateHUD(game) {
@@ -318,18 +324,24 @@ export class UI {
     this.el['hud-balls'].textContent = `🎾 ${game.balls}`;
     this.el['hud-closecalls'].textContent =
       game.nearMisses > 0 ? `close calls: ${game.nearMisses}` : '';
-    const p = game.power;
-    this.el['hud-power'].classList.toggle('hidden', !p);
-    if (p) {
-      const label = {
-        zoomies: '🥏 ZOOMIES 2X',
-        magnet: '🧲 MAGNET',
-        goldbone: '🦴 2X SCORE',
-        yarn: '🧶 BALL FRENZY',
-      }[p.type];
-      this.el['hud-power'].textContent = `${label} ${Math.ceil(p.timeLeft)}s`;
-    }
-    this.el['hud-life'].classList.toggle('hidden', !game.extraLife);
+    // Powers stack, so the HUD lists every active one with its own timer
+    const LABELS = {
+      zoomies: '🥏 ZOOMIES',
+      magnet: '🧲 MAGNET',
+      goldbone: '🦴 2X',
+      yarn: '🧶 FRENZY',
+    };
+    const active = Object.entries(game.powers ?? {})
+      .filter(([, t]) => t > 0)
+      .sort((a, b) => b[1] - a[1]);
+    this.el['hud-power'].classList.toggle('hidden', active.length === 0);
+    this.el['hud-power'].innerHTML = active
+      .map(([type, t]) => `<span class="pw">${LABELS[type] ?? type} ${Math.ceil(t)}s</span>`)
+      .join('');
+
+    const lives = game.extraLives ?? 0;
+    this.el['hud-life'].classList.toggle('hidden', lives === 0);
+    this.el['hud-life'].textContent = lives > 1 ? `🥩 x${lives}` : '🥩 EXTRA LIFE';
   }
 
   showDeath(game) {

@@ -6,15 +6,19 @@ export const CONFIG = {
   planetRadius: 20,
   laneAngle: 0.06,         // lateral radians between adjacent lanes (keeps outer lanes on-screen in portrait)
   dogTheta: 0.35,          // dog sits this far down the near side of the globe, below the crest
-  spawnAheadAngle: 1.0,    // obstacles appear this far beyond the crest (relative to globe top)
+  spawnAheadAngle: 1.15,   // obstacles appear this far beyond the crest (relative to globe top)
   despawnBehindAngle: 0.5, // removed this far past the dog
 
   // Speed in radians of planet rotation per second.
   // Stage system: every stageLength meters is a checkpoint; speed steps up.
   baseSpeed: 0.44,         // fast out of the gate (doubled per playtest 4)
   stageLength: 500,        // meters per stage/checkpoint
-  stageSpeedBump: 0.045,   // speed added at each checkpoint
-  maxSpeed: 0.8,
+  // Ceiling raised after Bryce cruised the old cap (0.8 == 197mph) for 100
+  // stages. Reaction time is bounded by the horizon, not the spawn distance,
+  // so spawnAheadAngle goes up alongside it — otherwise props pop into view
+  // too late to react rather than merely arriving faster.
+  stageSpeedBump: 0.05,    // speed added at each checkpoint
+  maxSpeed: 1.02,          // ~251 mph
   metersPerRadian: 110,    // score scale: distance = rotation * this
 
   // Obstacle spawning
@@ -23,21 +27,30 @@ export const CONFIG = {
   doubleSpawnChance: 0.28, // chance a row has 2 obstacles (never blocks all lanes)
   ballChance: 0.45,        // chance a row also drops a tennis ball in a free lane
 
-  // Powerups: rare pickups granting a timed ability (steak is held, not timed)
+  // Powerups: rare pickups granting a timed ability. All of them STACK —
+  // several can run at once, and grabbing the same one again extends it —
+  // so the rarity does the balancing, not mutual exclusion.
   powerups: {
-    chance: 0.06,          // per spawn row
-    duration: 7,           // seconds active
+    chance: 0.055,         // per spawn row (kept low: stacking is strong)
+    duration: 9,           // seconds active (was 7 — most felt too short)
+    maxDuration: 20,       // ceiling when re-grabbing the same power
+    maxExtraLives: 3,      // steaks bank up instead of being one-at-a-time
     magnetLaneDist: 2.6,   // Ball Magnet warp reach, in lanes
-    magnetWindow: 0.5,     // balls inside this travel window get pulled, radians
+    magnetWindow: 0.5,     // pickups inside this travel window get pulled, radians
     magnetPull: 6,         // warp strength (per-second lerp rate)
     zoomiesAnimBoost: 1.7, // gallop animation speed multiplier during Zoomies
   },
 
   // Themed levels (see themes.js). Stages advance through the theme list in
-  // order, spending a random 2-4 stages in each before moving on, so a world
-  // has time to land before it changes.
-  themeStagesMin: 2,
-  themeStagesMax: 4,
+  // order, spending a random 1-3 stages in each before moving on. Shortened
+  // from 2-4 so worlds cycle noticeably quicker without being a blur.
+  themeStagesMin: 1,
+  themeStagesMax: 3,
+
+  // Chance that a finished theme block drops into an ultra-rare stage
+  // (heaven / space / hell) instead of the next normal world. Rare stages
+  // always last exactly one stage.
+  rareChance: 0.14,
 
   // Intro chase cutscene
   intro: {

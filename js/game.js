@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { CONFIG } from './config.js';
 import { laneAlpha, surfacePivot } from './world.js';
 import { Spawner } from './obstacles.js';
-import { THEMES } from './themes.js';
+import { THEMES, pickRareTheme } from './themes.js';
 import { makeFence } from './fence.js';
 
 const _v = new Vector3();
@@ -51,12 +51,15 @@ export class Game {
     this.nearMisses = 0;
     this.deathTimer = 0;
     this.deathCause = 'wipeout';
-    this.power = null;      // { type, timeLeft }
-    this.extraLife = false; // steak held (non-stacking)
+    // Powers STACK: a map of type -> seconds remaining, so several run at
+    // once and re-grabbing one extends it (capped at maxDuration).
+    this.powers = {};
+    this.extraLives = 0;    // steaks bank up, also stackable
     this.invulnTimer = 0;   // grace after a steak save
     // Themed levels: start in the first theme, move on after 2-4 stages
     this.themeIndex = 0;
     this.theme = THEMES[0];
+    this.onThemeChange?.(this.theme);
     this.stagesLeftInTheme = this._rollThemeStages();
     this.spawner.setTheme(this.theme);
     // Squirrel chase state
@@ -186,8 +189,11 @@ export class Game {
     this.spin += this.speed * dt;
     this.planetGroup.rotation.x = this.spin;
 
-    // Score: distance plus multiplier bonus (Zoomies / Golden Bone = 2x)
-    const mult = this.power?.type === 'zoomies' || this.power?.type === 'goldbone' ? 2 : 1;
+    // Score multipliers stack multiplicatively: Zoomies AND Golden Bone
+    // together is 4x, which is the payoff for a lucky double pickup.
+    let mult = 1;
+    if (this.has('zoomies')) mult *= 2;
+    if (this.has('goldbone')) mult *= 2;
     this.bonus += (mult - 1) * this.speed * CONFIG.metersPerRadian * dt;
     this.distance = this.spin * CONFIG.metersPerRadian + this.bonus;
 
@@ -198,24 +204,44 @@ export class Game {
       this.stagesLeftInTheme -= 1;
       let newTheme = null;
       if (this.stagesLeftInTheme <= 0) {
-        this.themeIndex = (this.themeIndex + 1) % THEMES.length;
-        this.theme = THEMES[this.themeIndex];
-        this.stagesLeftInTheme = this._rollThemeStages();
+        // Small chance of dropping into an ultra-rare world instead of the
+        // next normal one. Rare stages last exactly one stage, and never
+        // chain back-to-back, so they stay a surprise.
+        if (!this.theme.rare && Math.random() < CONFIG.rareChance) {
+          this.theme = pickRareTheme();
+          this.stagesLeftInTheme = 1;
+        } else {
+          this.themeIndex = (this.themeIndex + 1) % THEMES.length;
+          this.theme = THEMES[this.themeIndex];
+          this.stagesLeftInTheme = this._rollThemeStages();
+        }
         this.spawner.setTheme(this.theme);
         newTheme = this.theme.label;
+        this.onThemeChange?.(this.theme);
+        // Entering the house means going THROUGH the front of it: a wall
+        // across the track with one or two doors. Queued so it arrives just
+        // after the banner, as the threshold into the new world.
+        if (this.theme.gate) {
+          const lanes = [...Array(CONFIG.lanes).keys()].sort(() => Math.random() - 0.5);
+          const doorCount = Math.random() < 0.45 ? 2 : 1;
+          this.spawner.spawnDoorGate(this.spin, lanes.slice(0, doorCount));
+          this.spawnTimer = Math.max(this.spawnTimer, 1.1); // keep the gate clear
+        }
       }
-      this.ui.showStageBanner(this.stage, newTheme);
-      if (newTheme) this.sfx?.newTheme(); else this.sfx?.checkpoint();
+      this.ui.showStageBanner(this.stage, newTheme, this.theme.rare);
+      if (newTheme) {
+        if (this.theme.rare) this.sfx?.rareStage(); else this.sfx?.newTheme();
+      } else this.sfx?.checkpoint();
     }
     this.speed = Math.min(
       CONFIG.maxSpeed,
       CONFIG.baseSpeed + (this.stage - 1) * CONFIG.stageSpeedBump
     );
 
-    // Powerup timers
-    if (this.power) {
-      this.power.timeLeft -= dt;
-      if (this.power.timeLeft <= 0) this.power = null;
+    // Powerup timers — each stacked power counts down independently
+    for (const type of Object.keys(this.powers)) {
+      this.powers[type] -= dt;
+      if (this.powers[type] <= 0) delete this.powers[type];
     }
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
 
@@ -231,7 +257,7 @@ export class Game {
     // Spawning
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      if (this.power?.type === 'yarn') this.spawner.spawnBallRow(this.spin);
+      if (this.has('yarn')) this.spawner.spawnBallRow(this.spin);
       else this.spawner.spawnRow(this.spin);
       const t = (this.speed - CONFIG.baseSpeed) / (CONFIG.maxSpeed - CONFIG.baseSpeed);
       this.spawnTimer =
@@ -240,28 +266,46 @@ export class Game {
 
     // Collisions / collection — the runner's line is at theta = dogTheta
     const dogT = CONFIG.dogTheta;
-    const magnet = this.power?.type === 'magnet';
+    const magnet = this.has('magnet');
     for (const e of [...this.spawner.entities]) {
       const prev = spinBefore + e.theta0 - dogT;
       let cur = this.spin + e.theta0 - dogT;
       let laneDist = Math.abs(e.lane - this.lane);
 
-      if (e.isBall) {
-        // Ball Magnet: physically warp collectibles toward the runner
-        if (magnet && !e.collected && Math.abs(cur) < CONFIG.powerups.magnetWindow &&
-            laneDist < CONFIG.powerups.magnetLaneDist) {
-          const pull = Math.min(1, CONFIG.powerups.magnetPull * dt);
-          e.theta0 += (dogT - this.spin - e.theta0) * pull;
-          e.lane += (this.lane - e.lane) * pull;
-          e.pivot.rotation.x = e.theta0;
-          e.pivot.rotation.z = laneAlpha(e.lane);
-          cur = this.spin + e.theta0 - dogT;
-          laneDist = Math.abs(e.lane - this.lane);
-          if (Math.random() < dt * 30) {
-            e.group.getWorldPosition(_v);
-            this.fx?.sparkle(_v);
-          }
+      // Ball Magnet warps ANY pickup toward the runner — collectibles and
+      // powerups alike. Pulling a steak or a frisbee to you is the best part
+      // of having it, and "magnet only works on tennis balls" read as a bug.
+      if ((e.isBall || e.isPower) && magnet && !e.collected &&
+          Math.abs(cur) < CONFIG.powerups.magnetWindow &&
+          laneDist < CONFIG.powerups.magnetLaneDist) {
+        const pull = Math.min(1, CONFIG.powerups.magnetPull * dt);
+        e.theta0 += (dogT - this.spin - e.theta0) * pull;
+        e.lane += (this.lane - e.lane) * pull;
+        e.pivot.rotation.x = e.theta0;
+        e.pivot.rotation.z = laneAlpha(e.lane);
+        cur = this.spin + e.theta0 - dogT;
+        laneDist = Math.abs(e.lane - this.lane);
+        if (Math.random() < dt * 30) {
+          e.group.getWorldPosition(_v);
+          this.fx?.sparkle(_v);
         }
+      }
+
+      if (e.isDoor) {
+        // Bursting through the doorway — the reward for picking right
+        if (!e.collected && Math.abs(cur) < 0.03 && laneDist < 0.7) {
+          e.collected = true;
+          e.group.getWorldPosition(_v);
+          this.fx?.plankBurst(_v);
+          this.sfx?.checkpoint();
+          this.spawner.remove(e);
+          continue;
+        }
+        if (cur > CONFIG.despawnBehindAngle) this.spawner.remove(e);
+        continue;
+      }
+
+      if (e.isBall) {
         if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.65) {
           e.collected = true;
           this.balls++;
@@ -279,9 +323,17 @@ export class Game {
       } else if (e.isPower) {
         if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.6) {
           e.collected = true;
-          if (e.ptype === 'steak') { this.extraLife = true; this.sfx?.extraLife(); }
-          else {
-            this.power = { type: e.ptype, timeLeft: CONFIG.powerups.duration };
+          if (e.ptype === 'steak') {
+            this.extraLives = Math.min(
+              CONFIG.powerups.maxExtraLives, this.extraLives + 1
+            );
+            this.sfx?.extraLife();
+          } else {
+            // Stacks: adds to whatever is already running, up to a ceiling
+            this.powers[e.ptype] = Math.min(
+              CONFIG.powerups.maxDuration,
+              (this.powers[e.ptype] ?? 0) + CONFIG.powerups.duration
+            );
             this.sfx?.powerup();
           }
           e.group.getWorldPosition(_v);
@@ -312,17 +364,22 @@ export class Game {
 
   // Returns true if the runner survives contact (zoomies / steak / grace).
   // On true death, calls _die and returns false.
+  // Is a stacking power currently active?
+  has(type) {
+    return (this.powers[type] ?? 0) > 0;
+  }
+
   _survivesHit(e) {
     if (this.invulnTimer > 0) return true;
-    if (this.power?.type === 'zoomies') {
+    if (this.has('zoomies')) {
       // Invincible: plow straight through
       e.group.getWorldPosition(_v);
       this.fx?.crash(_v);
       this.spawner.remove(e);
       return true;
     }
-    if (this.extraLife) {
-      this.extraLife = false;
+    if (this.extraLives > 0) {
+      this.extraLives -= 1;
       this.invulnTimer = 1.5;
       this.sfx?.save();
       this.dogPivot.children[0]?.getWorldPosition(_v);
@@ -345,12 +402,26 @@ export class Game {
       if (!e.isBall && !e.isPower) danger[e.lane] += cur > -0.12 ? 10 : 3;
     }
     if (danger[this.sqTargetLane] > 0) {
-      const lanes = [...Array(CONFIG.lanes).keys()].sort(
-        (a, b) =>
-          danger[a] - danger[b] ||
-          Math.abs(a - this.sqTargetLane) - Math.abs(b - this.sqTargetLane)
-      );
-      this.sqTargetLane = lanes[0];
+      // Pick among the SAFEST lanes, preferring the nearest, breaking any
+      // remaining tie at random. Sorting purely by (danger, distance) is a
+      // stable sort, so equal candidates always resolved to the lowest index
+      // — which is why the squirrel kept migrating to the far left and
+      // parking there.
+      const best = [...Array(CONFIG.lanes).keys()]
+        .map((l) => ({ l, d: danger[l], dist: Math.abs(l - this.sqTargetLane) }))
+        .sort((a, b) => a.d - b.d || a.dist - b.dist);
+      const top = best.filter((c) => c.d === best[0].d && c.dist === best[0].dist);
+      this.sqTargetLane = top[Math.floor(Math.random() * top.length)].l;
+    } else if (Math.random() < dt * 0.35) {
+      // Idle wander: with no threat, occasionally drift a lane so the chase
+      // stays lively instead of the quarry running a perfectly straight line.
+      // REFLECT at the edges rather than clamping — clamping makes lane 0 and
+      // lane 4 absorbing states, so the squirrel drifts outward and parks
+      // against a wall, which is what made it hug one side.
+      let dir = Math.random() < 0.5 ? -1 : 1;
+      if (this.sqTargetLane <= 0) dir = 1;
+      else if (this.sqTargetLane >= CONFIG.lanes - 1) dir = -1;
+      this.sqTargetLane += dir;
     }
     const diff = this.sqTargetLane - this.sqLane;
     const k = 1 - Math.exp(-dt / (CONFIG.laneChangeTime * 0.7));

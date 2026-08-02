@@ -261,7 +261,13 @@ export function buildDog(breedKey = 'gsp', cosmetics = {}) {
       wipeout(style, deathT);
       return;
     }
+    // Clear everything a wipeout may have left behind. The run cycle only
+    // writes rotation.x/z and position.y, so a spinout's rotation.y and the
+    // bounce/trip position.z used to persist into the NEXT run and leave the
+    // character permanently skewed (collision was fine — purely visual).
     dog.scale.set(1, 1, 1);
+    dog.rotation.y = 0;
+    dog.position.z = 0;
     const freq = 8.5 + speed * 24;
     const phase = t * freq;
 

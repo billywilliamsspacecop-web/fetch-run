@@ -70,6 +70,29 @@ export class Spawner {
     }
   }
 
+  // A wall across every lane except one or two doorways. Used as the
+  // threshold into the house stage: pick a door and burst through, hit a
+  // panel and it's a wipeout. Doors carry no hitbox — they're the gap.
+  spawnDoorGate(spin, doorLanes) {
+    const theta0 = -CONFIG.spawnAheadAngle - spin;
+    for (let lane = 0; lane < CONFIG.lanes; lane++) {
+      if (doorLanes.includes(lane)) {
+        this._add(P.makeDoorway(), lane, theta0, { isDoor: true });
+      } else {
+        const panel = P.obDoorPanel();
+        const { halfW, halfD } = { halfW: 0.5, halfD: 0.11 };
+        const laneWidthUnits = CONFIG.laneAngle * CONFIG.planetRadius;
+        this._add(panel, lane, theta0, {
+          hitbox: {
+            lat: (halfW / laneWidthUnits) * 0.84,
+            ang: (halfD / CONFIG.planetRadius) * 0.84,
+          },
+          kind: 'obDoorPanel',
+        });
+      }
+    }
+  }
+
   // During Yarn Ball frenzy: rows are all collectibles, no obstacles
   spawnBallRow(spin) {
     const theta0 = -CONFIG.spawnAheadAngle - spin;
@@ -87,7 +110,8 @@ export class Spawner {
     this.planetGroup.add(pivot);
     this.entities.push({
       pivot, group, lane, theta0,
-      isBall: false, isPower: false, ptype: null, hitbox: null, collected: false,
+      isBall: false, isPower: false, isDoor: false,
+      ptype: null, hitbox: null, collected: false,
       kind: null, // obstacle builder name — picks the wipeout animation
       ...extra,
     });

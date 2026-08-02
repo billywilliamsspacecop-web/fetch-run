@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG, COLORS } from './config.js';
-import { THEMES, playableEdgeAlpha, measureHalfExtents } from './themes.js';
+import { THEMES, ALL_THEMES, playableEdgeAlpha, measureHalfExtents } from './themes.js';
 import * as P from './props.js';
 
 const R = CONFIG.planetRadius;
@@ -82,7 +82,7 @@ export function buildWorld(scene) {
   // shrinks with screen width, so phones lost the margin entirely.
   const edge = playableEdgeAlpha();
   const sceneryGroups = {};
-  for (const theme of THEMES) {
+  for (const theme of ALL_THEMES) {
     const group = new THREE.Group();
     group.visible = theme.id === first.id;
     for (const spec of theme.scenery) {
