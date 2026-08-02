@@ -12,18 +12,25 @@ export const CONFIG = {
   // Speed in radians of planet rotation per second.
   // Stage system: every stageLength meters is a checkpoint; speed steps up.
   baseSpeed: 0.44,         // fast out of the gate (doubled per playtest 4)
-  stageLength: 500,        // meters per stage/checkpoint
+  // Lengthened with the speed increase: at 500m a top-speed stage lasted
+  // barely 4 seconds, so checkpoints and worlds blurred past.
+  stageLength: 900,        // meters per stage/checkpoint
   // Ceiling raised after Bryce cruised the old cap (0.8 == 197mph) for 100
   // stages. Reaction time is bounded by the horizon, not the spawn distance,
   // so spawnAheadAngle goes up alongside it — otherwise props pop into view
   // too late to react rather than merely arriving faster.
+  // Keeps climbing well into a long run rather than pinning early: with
+  // 900m stages you hit the ceiling around stage 18, not stage 12.
   stageSpeedBump: 0.05,    // speed added at each checkpoint
-  maxSpeed: 1.02,          // ~251 mph
+  maxSpeed: 1.3,           // ~320 mph
   metersPerRadian: 110,    // score scale: distance = rotation * this
 
   // Obstacle spawning
   spawnBaseInterval: 1.5,  // seconds between spawn rows at base speed
-  spawnMinInterval: 0.5,
+  // Raised alongside maxSpeed. The interval shrinks as you speed up, so
+  // without this, top-speed play compounds "arrives sooner" with "more of
+  // them" and tips from hard into unfair.
+  spawnMinInterval: 0.68,
   doubleSpawnChance: 0.28, // chance a row has 2 obstacles (never blocks all lanes)
   ballChance: 0.45,        // chance a row also drops a tennis ball in a free lane
 
@@ -50,7 +57,7 @@ export const CONFIG = {
   // Chance that a finished theme block drops into an ultra-rare stage
   // (heaven / space / hell) instead of the next normal world. Rare stages
   // always last exactly one stage.
-  rareChance: 0.14,
+  rareChance: 0.18,
 
   // Intro chase cutscene
   intro: {

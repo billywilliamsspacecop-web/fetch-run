@@ -267,7 +267,15 @@ export const RARE_THEMES = [
 // Everything that needs hitbox calibration and prebuilt scenery groups
 export const ALL_THEMES = [...THEMES, ...RARE_THEMES];
 
-export const pickRareTheme = () =>
-  RARE_THEMES[Math.floor(Math.random() * RARE_THEMES.length)];
+// Never serve the same rare stage twice running — with only three of them,
+// pure random meant you could hit hell repeatedly and go a very long time
+// without ever seeing heaven or space.
+let lastRareId = null;
+export function pickRareTheme() {
+  const pool = RARE_THEMES.filter((t) => t.id !== lastRareId);
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  lastRareId = pick.id;
+  return pick;
+}
 
 export const themeById = (id) => ALL_THEMES.find((t) => t.id === id) ?? THEMES[0];

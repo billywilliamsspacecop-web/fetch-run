@@ -59,6 +59,7 @@ export class Game {
     // Themed levels: start in the first theme, move on after 2-4 stages
     this.themeIndex = 0;
     this.theme = THEMES[0];
+    this.pendingTheme = null; // world waiting behind a door gate
     this.onThemeChange?.(this.theme);
     this.stagesLeftInTheme = this._rollThemeStages();
     this.spawner.setTheme(this.theme);
@@ -202,36 +203,37 @@ export class Game {
     if (stageNow > this.stage) {
       this.stage = stageNow;
       this.stagesLeftInTheme -= 1;
-      let newTheme = null;
-      if (this.stagesLeftInTheme <= 0) {
+      let announced = false;
+      if (this.stagesLeftInTheme <= 0 && !this.pendingTheme) {
         // Small chance of dropping into an ultra-rare world instead of the
         // next normal one. Rare stages last exactly one stage, and never
         // chain back-to-back, so they stay a surprise.
+        let next;
         if (!this.theme.rare && Math.random() < CONFIG.rareChance) {
-          this.theme = pickRareTheme();
-          this.stagesLeftInTheme = 1;
+          next = pickRareTheme();
         } else {
           this.themeIndex = (this.themeIndex + 1) % THEMES.length;
-          this.theme = THEMES[this.themeIndex];
-          this.stagesLeftInTheme = this._rollThemeStages();
+          next = THEMES[this.themeIndex];
         }
-        this.spawner.setTheme(this.theme);
-        newTheme = this.theme.label;
-        this.onThemeChange?.(this.theme);
-        // Entering the house means going THROUGH the front of it: a wall
-        // across the track with one or two doors. Queued so it arrives just
-        // after the banner, as the threshold into the new world.
-        if (this.theme.gate) {
+        if (next.gate) {
+          // A gated world is entered by breaking INTO it, so the door has to
+          // come first: hold the old world's look and props until the player
+          // actually bursts through, otherwise you're already standing inside
+          // the house when its front door finally arrives.
+          this.pendingTheme = next;
           const lanes = [...Array(CONFIG.lanes).keys()].sort(() => Math.random() - 0.5);
           const doorCount = Math.random() < 0.45 ? 2 : 1;
           this.spawner.spawnDoorGate(this.spin, lanes.slice(0, doorCount));
-          this.spawnTimer = Math.max(this.spawnTimer, 1.1); // keep the gate clear
+          this.spawnTimer = Math.max(this.spawnTimer, 1.3); // keep the gate clear
+        } else {
+          this._enterTheme(next);
+          announced = true;
         }
       }
-      this.ui.showStageBanner(this.stage, newTheme, this.theme.rare);
-      if (newTheme) {
-        if (this.theme.rare) this.sfx?.rareStage(); else this.sfx?.newTheme();
-      } else this.sfx?.checkpoint();
+      if (!announced) {
+        this.ui.showStageBanner(this.stage);
+        this.sfx?.checkpoint();
+      }
     }
     this.speed = Math.min(
       CONFIG.maxSpeed,
@@ -292,16 +294,22 @@ export class Game {
       }
 
       if (e.isDoor) {
-        // Bursting through the doorway — the reward for picking right
+        // Bursting through the doorway — the reward for picking right, and
+        // the moment the new world actually begins.
         if (!e.collected && Math.abs(cur) < 0.03 && laneDist < 0.7) {
           e.collected = true;
           e.group.getWorldPosition(_v);
           this.fx?.plankBurst(_v);
-          this.sfx?.checkpoint();
           this.spawner.remove(e);
+          this._commitPendingTheme();
           continue;
         }
-        if (cur > CONFIG.despawnBehindAngle) this.spawner.remove(e);
+        // Safety net: if the gate somehow slips past (plowed through on
+        // Zoomies, say), still commit rather than stranding the old world.
+        if (cur > CONFIG.despawnBehindAngle) {
+          this.spawner.remove(e);
+          this._commitPendingTheme();
+        }
         continue;
       }
 
@@ -367,6 +375,24 @@ export class Game {
   // Is a stacking power currently active?
   has(type) {
     return (this.powers[type] ?? 0) > 0;
+  }
+
+  // Commit to a world: swap props, colors and scenery, and announce it.
+  _enterTheme(theme) {
+    this.theme = theme;
+    this.stagesLeftInTheme = theme.rare ? 1 : this._rollThemeStages();
+    this.spawner.setTheme(theme);
+    this.onThemeChange?.(theme);
+    this.ui.showStageBanner(this.stage, theme.label, theme.rare);
+    if (theme.rare) this.sfx?.rareStage(); else this.sfx?.newTheme();
+  }
+
+  // Called the moment the player clears a door gate (or it passes them by).
+  _commitPendingTheme() {
+    if (!this.pendingTheme) return;
+    const t = this.pendingTheme;
+    this.pendingTheme = null;
+    this._enterTheme(t);
   }
 
   _survivesHit(e) {
