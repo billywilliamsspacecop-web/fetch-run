@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CONFIG, COLORS } from './config.js';
-import { THEMES } from './themes.js';
+import { THEMES, playableEdgeAlpha, measureHalfExtents } from './themes.js';
 import * as P from './props.js';
 
 const R = CONFIG.planetRadius;
@@ -73,18 +73,26 @@ export function buildWorld(scene) {
   planet.receiveShadow = true;
   planetGroup.add(planet);
 
-  // Per-theme scenery, scattered outside the lane band so the path stays clear
-  const laneBand = 3.2 * CONFIG.laneAngle;
+  // Per-theme scenery, kept strictly OUTSIDE the playable lanes.
+  // Each type is offset by its own measured half-width, because a wide prop
+  // (house wall, big tree) centred just past the lanes still reaches into
+  // them — which looked like an obstacle you could inexplicably run through,
+  // and made theme changes pop in a "wall" of unavoidable-looking clutter.
+  // The old fixed 3.2*laneAngle band only worked on wide screens: laneAngle
+  // shrinks with screen width, so phones lost the margin entirely.
+  const edge = playableEdgeAlpha();
   const sceneryGroups = {};
   for (const theme of THEMES) {
     const group = new THREE.Group();
     group.visible = theme.id === first.id;
     for (const spec of theme.scenery) {
+      const { halfW } = measureHalfExtents(spec.make, 5);
+      const clearance = edge + halfW / R;
       for (let i = 0; i < spec.count; i++) {
         const theta = Math.random() * Math.PI * 2;
         const side = Math.random() < 0.5 ? -1 : 1;
         const span = spec.far - spec.near;
-        const alpha = side * (laneBand + spec.near + Math.random() * span);
+        const alpha = side * (clearance + spec.near + Math.random() * span);
         const obj = spec.make();
         obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         group.add(surfacePivot(theta, alpha, obj));
@@ -125,7 +133,7 @@ export function buildWorld(scene) {
   const tufts = new THREE.InstancedMesh(tuftGeo, tuftMat, 150);
   for (let i = 0; i < 150; i++) {
     const theta = Math.random() * Math.PI * 2;
-    const alpha = (Math.random() - 0.5) * 2 * (laneBand + 0.05);
+    const alpha = (Math.random() - 0.5) * 2 * edge; // tufts fill the running band
     m.makeRotationX(theta);
     m.multiply(mRot.makeRotationZ(alpha));
     m.multiply(mRot.makeTranslation(0, R + 0.02, 0));

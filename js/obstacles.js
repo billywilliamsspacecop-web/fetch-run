@@ -49,7 +49,10 @@ export class Spawner {
     for (const lane of obstacleLanes) {
       const set = this.theme.obstacles;
       const type = set[Math.floor(Math.random() * set.length)];
-      this._add(type.make(), lane, theta0, { hitbox: type.hitbox });
+      const mesh = type.make();
+      // fitScale keeps props from spilling outside their lane (see themes.js)
+      if (type.fitScale && type.fitScale !== 1) mesh.scale.setScalar(type.fitScale);
+      this._add(mesh, lane, theta0, { hitbox: type.hitbox, kind: type.make.name });
     }
     if (Math.random() < CONFIG.ballChance) {
       const free = shuffled.find((l) => !used.includes(l));
@@ -85,6 +88,7 @@ export class Spawner {
     this.entities.push({
       pivot, group, lane, theta0,
       isBall: false, isPower: false, ptype: null, hitbox: null, collected: false,
+      kind: null, // obstacle builder name — picks the wipeout animation
       ...extra,
     });
   }

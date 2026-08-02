@@ -7,10 +7,11 @@ export class UI {
     this.input = input;
     this.el = {};
     for (const id of [
-      'menu', 'hud', 'death', 'intro-hint', 'shop', 'paused',
-      'menu-best', 'menu-bank', 'scheme-hint',
+      'menu', 'hud', 'death', 'intro-hint', 'shop', 'paused', 'select',
+      'menu-best', 'menu-bank',
       'btn-shop', 'btn-shop-close', 'shop-bank', 'shop-items',
-      'btn-tap', 'btn-swipe', 'btn-gsp', 'btn-golden', 'btn-cat',
+      'btn-play', 'btn-characters', 'btn-select-done',
+      'btn-prev', 'btn-next', 'select-name', 'select-desc', 'select-stage',
       'btn-pause', 'btn-resume', 'btn-pause-home',
       'hud-distance', 'hud-balls', 'hud-closecalls', 'hud-power', 'hud-life', 'stage-banner',
       'death-title', 'death-distance', 'death-best', 'death-actions', 'btn-again', 'btn-home',
@@ -26,6 +27,9 @@ export class UI {
     this.onHome = null;
     this.onPauseToggle = null; // set by main; pause button + Resume
     this.onHomeFromPause = null;
+    this.onSelectOpen = null;  // set by main; drives the 3D character preview
+    this.onSelectClose = null;
+    this.onSelectStep = null;
 
     this.el['btn-pause'].addEventListener('click', (e) => {
       e.stopPropagation();
@@ -70,58 +74,56 @@ export class UI {
       this.onHome?.();
     });
 
-    this.el['btn-tap'].addEventListener('click', (e) => {
+    // Menu is now explicit buttons, not tap-anywhere, so PLAY can sit
+    // alongside CHARACTERS and SHOP without them fighting each other.
+    this.el['btn-play'].addEventListener('click', (e) => {
       e.stopPropagation();
-      this._setScheme('tap');
+      this.onScreenTap?.();
     });
-    this.el['btn-swipe'].addEventListener('click', (e) => {
+    this.el['btn-characters'].addEventListener('click', (e) => {
       e.stopPropagation();
-      this._setScheme('swipe');
+      this.openSelect();
     });
-    this.el['btn-gsp'].addEventListener('click', (e) => {
+    this.el['btn-select-done'].addEventListener('click', (e) => {
       e.stopPropagation();
-      this._setBreed('gsp');
+      this.closeSelect();
     });
-    this.el['btn-golden'].addEventListener('click', (e) => {
+    this.el['btn-prev'].addEventListener('click', (e) => {
       e.stopPropagation();
-      this._setBreed('golden');
+      this.onSelectStep?.(-1);
     });
-    this.el['btn-cat'].addEventListener('click', (e) => {
+    this.el['btn-next'].addEventListener('click', (e) => {
       e.stopPropagation();
-      this._setBreed('cat');
+      this.onSelectStep?.(1);
     });
-    this._breedButtons(localStorage.getItem('fetchrun.breed') || 'gsp');
-    this.el.menu.addEventListener('click', () => this.onScreenTap?.());
     this.el['intro-hint'].addEventListener('click', () => this.onScreenTap?.());
 
-    this._setScheme(input.scheme);
     this.showMenu();
   }
 
-  _setBreed(breed) {
-    localStorage.setItem('fetchrun.breed', breed);
-    this._breedButtons(breed);
-    this.onBreedChange?.(breed);
+  // Called by the CharacterSelect as it cycles models
+  setSelectInfo(key, breed) {
+    localStorage.setItem('fetchrun.breed', key);
+    this.el['select-name'].textContent = breed.label;
+    this.el['select-desc'].textContent = breed.desc ?? '';
   }
 
-  _breedButtons(breed) {
-    this.el['btn-gsp'].classList.toggle('active', breed === 'gsp');
-    this.el['btn-golden'].classList.toggle('active', breed === 'golden');
-    this.el['btn-cat'].classList.toggle('active', breed === 'cat');
+  openSelect() {
+    for (const id of ['menu', 'hud', 'death', 'intro-hint', 'shop']) {
+      this.el[id].classList.add('hidden');
+    }
+    this.el.select.classList.remove('hidden');
+    this.onSelectOpen?.(localStorage.getItem('fetchrun.breed') || 'gsp');
   }
 
-  _setScheme(scheme) {
-    this.input.setScheme(scheme);
-    this.el['btn-tap'].classList.toggle('active', scheme === 'tap');
-    this.el['btn-swipe'].classList.toggle('active', scheme === 'swipe');
-    this.el['scheme-hint'].textContent =
-      scheme === 'tap'
-        ? 'Tap a lane — the dog goes there'
-        : 'Swipe left/right — one lane per swipe';
+  closeSelect() {
+    this.el.select.classList.add('hidden');
+    this.onSelectClose?.();
+    this.showMenu();
   }
 
   _show(which) {
-    for (const id of ['menu', 'hud', 'death', 'intro-hint']) {
+    for (const id of ['menu', 'hud', 'death', 'intro-hint', 'select']) {
       this.el[id].classList.toggle('hidden', id !== which);
     }
   }
@@ -194,7 +196,7 @@ export class UI {
   }
 
   openShop() {
-    for (const id of ['menu', 'hud', 'death', 'intro-hint']) {
+    for (const id of ['menu', 'hud', 'death', 'intro-hint', 'select']) {
       this.el[id].classList.add('hidden');
     }
     this.el.shop.classList.remove('hidden');

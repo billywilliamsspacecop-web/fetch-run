@@ -1,4 +1,67 @@
+import * as THREE from 'three';
+import { CONFIG } from './config.js';
 import * as P from './props.js';
+
+// Hitboxes are MEASURED from each prop's real geometry, never hand-guessed.
+// Hand-tuned numbers drifted badly from the models (the sprinkler's box was a
+// third of its visual width, so you could run straight through it), and the
+// drift is invisible on a desktop-width screen. Measuring keeps every prop
+// honest automatically, including any added later.
+const HITBOX_FORGIVENESS = 0.84; // slightly generous to the player
+let maxObstacleHalfRad = 0.03;
+
+// Widest thing that can occupy a lane, in radians — scenery must clear this.
+export const playableEdgeAlpha = () =>
+  2 * CONFIG.laneAngle + maxObstacleHalfRad + 0.015;
+
+// Opaque geometry only: see-through bits (sprinkler spray, fountain jets)
+// look passable, so they shouldn't be solid.
+export function measureHalfExtents(builder, samples = 4) {
+  let halfW = 0, halfD = 0;
+  for (let i = 0; i < samples; i++) {
+    const probe = builder();
+    probe.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    probe.traverse((n) => {
+      if (n.isMesh && !(n.material && n.material.transparent)) {
+        box.union(new THREE.Box3().setFromObject(n));
+      }
+    });
+    if (box.isEmpty()) continue;
+    halfW = Math.max(halfW, Math.abs(box.max.x), Math.abs(box.min.x));
+    halfD = Math.max(halfD, Math.abs(box.max.z), Math.abs(box.min.z));
+  }
+  return { halfW, halfD };
+}
+
+// No obstacle may be wider than this fraction of a lane. Several props
+// (picnic blanket, couch, fallen log, fountain) are modelled wider than a
+// lane, which would make them unavoidable no matter where you stand —
+// they get uniformly scaled down to fit instead. Lane width shrinks with
+// screen width, so this matters most on phones.
+const MAX_OBSTACLE_LANE_FRACTION = 0.9;
+
+// Called once at boot, after CONFIG.laneAngle is finalised for this viewport.
+export function calibrateHitboxes() {
+  const R = CONFIG.planetRadius;
+  const laneWidthUnits = CONFIG.laneAngle * R;
+  const maxHalfW = (MAX_OBSTACLE_LANE_FRACTION / 2) * laneWidthUnits;
+  maxObstacleHalfRad = 0.03;
+  for (const theme of THEMES) {
+    for (const o of theme.obstacles) {
+      const { halfW, halfD } = measureHalfExtents(o.make);
+      // Shrink oversized props to fit their lane; Spawner applies fitScale.
+      o.fitScale = halfW > maxHalfW ? maxHalfW / halfW : 1;
+      const w = halfW * o.fitScale;
+      const d = halfD * o.fitScale;
+      o.hitbox = {
+        lat: (w / laneWidthUnits) * HITBOX_FORGIVENESS,
+        ang: (d / R) * HITBOX_FORGIVENESS,
+      };
+      maxObstacleHalfRad = Math.max(maxObstacleHalfRad, w / R);
+    }
+  }
+}
 
 // Each theme is a self-contained level look: sky + lighting, ground colors,
 // its own obstacle set, its own collectible, and its own scenery mix.
@@ -18,10 +81,10 @@ export const THEMES = [
     canopyTint: null, canopyMix: 0,
     collectible: P.collectTennisBall,
     obstacles: [
-      { make: P.obGnome, hitbox: { lat: 0.3, ang: 0.018 } },
-      { make: P.obPicnicBasket, hitbox: { lat: 0.38, ang: 0.028 } },
-      { make: P.obSprinkler, hitbox: { lat: 0.28, ang: 0.018 } },
-      { make: () => P.obBench(), hitbox: { lat: 0.48, ang: 0.014 } },
+      { make: P.obGnome },
+      { make: P.obPicnicBasket },
+      { make: P.obSprinkler },
+      { make: () => P.obBench() },
     ],
     scenery: [
       { make: P.scTree, count: 70, near: 0.02, far: 0.55 },
@@ -38,11 +101,11 @@ export const THEMES = [
     canopyTint: null, canopyMix: 0,
     collectible: P.collectIceCream,
     obstacles: [
-      { make: P.obTrashCan, hitbox: { lat: 0.3, ang: 0.02 } },
-      { make: P.obHotDogCart, hitbox: { lat: 0.42, ang: 0.024 } },
-      { make: P.obStroller, hitbox: { lat: 0.32, ang: 0.024 } },
-      { make: P.obFountain, hitbox: { lat: 0.45, ang: 0.032 } },
-      { make: () => P.obBench(0x4a7a4f), hitbox: { lat: 0.48, ang: 0.014 } },
+      { make: P.obTrashCan },
+      { make: P.obHotDogCart },
+      { make: P.obStroller },
+      { make: P.obFountain },
+      { make: () => P.obBench(0x4a7a4f) },
     ],
     scenery: [
       { make: P.scTree, count: 46, near: 0.03, far: 0.55 },
@@ -61,11 +124,11 @@ export const THEMES = [
     canopyTint: 0x2f5f38, canopyMix: 0.25,
     collectible: P.collectAcorn,
     obstacles: [
-      { make: P.obFallenLog, hitbox: { lat: 0.5, ang: 0.018 } },
-      { make: P.obBoulder, hitbox: { lat: 0.38, ang: 0.028 } },
-      { make: P.obStump, hitbox: { lat: 0.36, ang: 0.026 } },
-      { make: P.obMushrooms, hitbox: { lat: 0.34, ang: 0.024 } },
-      { make: P.obBramble, hitbox: { lat: 0.4, ang: 0.028 } },
+      { make: P.obFallenLog },
+      { make: P.obBoulder },
+      { make: P.obStump },
+      { make: P.obMushrooms },
+      { make: P.obBramble },
     ],
     scenery: [
       { make: P.scPine, count: 84, near: 0.015, far: 0.55 },
@@ -84,11 +147,11 @@ export const THEMES = [
     canopyTint: null, canopyMix: 0,
     collectible: P.collectTennisBall,
     obstacles: [
-      { make: P.obTennisNet, hitbox: { lat: 0.48, ang: 0.014 } },
-      { make: P.obBallHopper, hitbox: { lat: 0.3, ang: 0.02 } },
-      { make: P.obBallMachine, hitbox: { lat: 0.32, ang: 0.022 } },
-      { make: P.obUmpireChair, hitbox: { lat: 0.32, ang: 0.022 } },
-      { make: P.obCourtCone, hitbox: { lat: 0.24, ang: 0.018 } },
+      { make: P.obTennisNet },
+      { make: P.obBallHopper },
+      { make: P.obBallMachine },
+      { make: P.obUmpireChair },
+      { make: P.obCourtCone },
     ],
     scenery: [
       { make: P.scChainFence, count: 30, near: 0.05, far: 0.35 },
@@ -106,11 +169,11 @@ export const THEMES = [
     canopyTint: null, canopyMix: 0,
     collectible: P.collectSock,
     obstacles: [
-      { make: P.obCouch, hitbox: { lat: 0.5, ang: 0.022 } },
-      { make: P.obCoffeeTable, hitbox: { lat: 0.44, ang: 0.02 } },
-      { make: P.obVacuum, hitbox: { lat: 0.3, ang: 0.022 } },
-      { make: P.obLaundryBasket, hitbox: { lat: 0.34, ang: 0.026 } },
-      { make: P.obCatTower, hitbox: { lat: 0.32, ang: 0.024 } },
+      { make: P.obCouch },
+      { make: P.obCoffeeTable },
+      { make: P.obVacuum },
+      { make: P.obLaundryBasket },
+      { make: P.obCatTower },
     ],
     scenery: [
       // Walls hug the lane band tightly so it reads as a hallway, not a field

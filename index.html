@@ -41,24 +41,26 @@
     <p class="subtitle">(working title)</p>
     <p id="menu-best" class="best hidden"></p>
     <p id="menu-bank" class="bank hidden"></p>
-    <p class="prompt">Tap anywhere to run</p>
-    <div class="controls-box">
-      <p class="controls-label">RUNNER</p>
-      <div class="controls-row">
-        <button id="btn-gsp" class="scheme-btn">THE DOG</button>
-        <button id="btn-golden" class="scheme-btn">GOLDIE</button>
-        <button id="btn-cat" class="scheme-btn">TUX</button>
-      </div>
+    <div class="menu-actions">
+      <button id="btn-play" class="action-btn primary">PLAY</button>
+      <button id="btn-characters" class="action-btn">CHARACTERS</button>
+      <button id="btn-shop" class="action-btn">🎾 SHOP</button>
     </div>
-    <div class="controls-box">
-      <p class="controls-label">CONTROLS</p>
-      <div class="controls-row">
-        <button id="btn-tap" class="scheme-btn">TAP ZONES</button>
-        <button id="btn-swipe" class="scheme-btn">SWIPE</button>
+    <p class="hint swipe-hint">swipe left / right to change lanes</p>
+  </div>
+
+  <div id="select" class="overlay hidden">
+    <h2 class="select-title">CHOOSE YOUR RUNNER</h2>
+    <div id="select-stage"></div>
+    <div class="select-nav">
+      <button id="btn-prev" class="nav-btn" aria-label="Previous">‹</button>
+      <div class="select-info">
+        <p id="select-name"></p>
+        <p id="select-desc"></p>
       </div>
-      <p id="scheme-hint" class="hint"></p>
+      <button id="btn-next" class="nav-btn" aria-label="Next">›</button>
     </div>
-    <button id="btn-shop" class="scheme-btn shop-open">🎾 SHOP</button>
+    <button id="btn-select-done" class="action-btn primary select-done">DONE</button>
   </div>
 
   <div id="shop" class="overlay hidden">

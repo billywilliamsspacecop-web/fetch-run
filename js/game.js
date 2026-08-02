@@ -23,7 +23,6 @@ export class Game {
     this.state = 'menu';
     this._reset();
 
-    input.onLaneRequest = (lane) => this._moveTo(lane);
     input.onLaneShift = (dir) => this._moveTo(this.targetLane + dir);
     input.onAction = () => this.handleScreenTap();
   }

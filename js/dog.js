@@ -53,7 +53,7 @@ export function buildDog(breedKey = 'gsp', cosmetics = {}) {
   // around the OUTSIDE of that head/body seam instead.
   const collarDef = COSMETICS.collar.find((c) => c.id === cosmetics.collar);
   const collarColor = collarDef?.color ?? breed.collar;
-  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.08, 10, 24), mat(collarColor));
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.065, 10, 24), mat(collarColor));
   collar.scale.set(1, 0.82, 1);
   collar.position.set(0, 0.6, -0.05);
   collar.rotation.x = 1.42;

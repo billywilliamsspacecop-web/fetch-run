@@ -380,6 +380,110 @@ html, body {
   background: rgba(255, 213, 79, 0.18);
 }
 
+/* --- menu actions --- */
+.menu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(80vw, 340px);
+  margin-top: 26px;
+}
+
+.menu-actions .action-btn {
+  flex: none;
+  width: 100%;
+}
+
+.swipe-hint {
+  margin-top: 18px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+/* --- character select --- */
+#select {
+  background: linear-gradient(rgba(40, 22, 8, 0.55), rgba(30, 16, 6, 0.75));
+  gap: 6px;
+  justify-content: center;
+  padding: max(28px, env(safe-area-inset-top)) 0 28px;
+}
+
+.select-title {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: #fff6e0;
+  text-shadow: 0 3px 0 rgba(120, 60, 0, 0.45);
+}
+
+#select-stage {
+  width: min(70vw, 300px);
+  height: min(70vw, 300px);
+  margin-top: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, rgba(255, 240, 210, 0.16), rgba(0, 0, 0, 0.25));
+  overflow: hidden;
+}
+
+#select-stage canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.select-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: min(84vw, 380px);
+  margin-top: 6px;
+}
+
+.nav-btn {
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 30px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.nav-btn:active {
+  transform: scale(0.92);
+}
+
+.select-info {
+  flex: 1;
+  text-align: center;
+}
+
+#select-name {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #ffd54f;
+  text-shadow: 0 3px 0 rgba(120, 60, 0, 0.4);
+}
+
+#select-desc {
+  font-size: 13px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+#select .select-done {
+  flex: none;
+  width: min(80vw, 340px);
+  margin-top: 14px;
+}
+
 .shop-open {
   flex: none;
   width: min(86vw, 420px);
@@ -487,7 +591,7 @@ html, body {
   filter: grayscale(0.85) brightness(0.65);
 }
 
-.shop-done {
+#shop .shop-done {
   flex: none;
   width: min(90vw, 420px);
 }

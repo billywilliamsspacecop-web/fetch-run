@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { CONFIG } from './config.js';
 import { buildWorld } from './world.js';
-import { THEMES } from './themes.js';
+import { THEMES, calibrateHitboxes } from './themes.js';
 import { buildDog } from './dog.js';
 import { buildChase } from './squirrel.js';
 import { FX } from './fx.js';
 import { Input } from './input.js';
 import { UI } from './ui.js';
 import { Game } from './game.js';
+import { CharacterSelect } from './select.js';
 
 const R = CONFIG.planetRadius;
 
@@ -60,28 +61,18 @@ function computeLaneLayout() {
     if (screenFracForLane(4, mid) > 0.94) hi = mid; else lo = mid;
   }
   const laneAngle = lo;
-  const laneFracs = [0, 1, 2, 3, 4].map((l) => screenFracForLane(l, laneAngle));
-  // Tap-zone boundary between lane i and i+1 is the midpoint of their
-  // on-screen fractions; the last boundary is just past the visible edge.
-  const zoneBoundaries = [
-    (laneFracs[0] + laneFracs[1]) / 2,
-    (laneFracs[1] + laneFracs[2]) / 2,
-    (laneFracs[2] + laneFracs[3]) / 2,
-    (laneFracs[3] + laneFracs[4]) / 2,
-    1,
-  ];
-  return { laneAngle, zoneBoundaries };
+  return { laneAngle };
 }
-const { laneAngle, zoneBoundaries } = computeLaneLayout();
+const { laneAngle } = computeLaneLayout();
 CONFIG.laneAngle = laneAngle;
+// Hitboxes and scenery clearance both derive from lane width, so calibrate
+// against real prop geometry now that laneAngle is final for this viewport.
+calibrateHitboxes();
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  // Re-derive tap zones for the new screen size — lane angle stays fixed
-  // once the world is built (obstacles are already placed using it).
-  input.setZoneBoundaries(computeLaneLayout().zoneBoundaries);
 });
 
 // --- world + dog + fx ---
@@ -123,7 +114,6 @@ scene.add(squirrelPivot);
 
 // --- game wiring ---
 const input = new Input();
-input.setZoneBoundaries(zoneBoundaries);
 const ui = new UI(input);
 const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx }, input, ui);
 ui.onScreenTap = () => game.handleScreenTap();
@@ -131,15 +121,23 @@ ui.onRunAgain = () => game.handleScreenTap();
 ui.onHome = () => game.goHome();
 ui.onPauseToggle = () => game.togglePause();
 ui.onHomeFromPause = () => { game.resume(); game.goHome(); };
-ui.onBreedChange = (breedKey) => {
+const charSelect = new CharacterSelect(document.getElementById('select-stage'), getEquip);
+charSelect.onChange = (key, breed) => {
+  ui.setSelectInfo(key, breed);
+  // Swap the in-world runner immediately so DONE returns you to a menu
+  // already showing the character you picked.
   dogCarrier.remove(dog.group);
-  dog = buildDog(breedKey, getEquip());
+  dog = buildDog(key, getEquip());
   dogCarrier.add(dog.group);
 };
+ui.onSelectOpen = (key) => charSelect.show(key);
+ui.onSelectClose = () => charSelect.hide();
+ui.onSelectStep = (dir) => charSelect.step(dir);
 ui.onCosmeticsChange = (equip) => {
   dogCarrier.remove(dog.group);
   dog = buildDog(localStorage.getItem('fetchrun.breed') || 'gsp', equip);
   dogCarrier.add(dog.group);
+  charSelect.refresh();
   squirrelCarrier.remove(squirrel.group);
   squirrel = buildChase(equip.chase || 'squirrel');
   squirrelCarrier.add(squirrel.group);
@@ -305,6 +303,7 @@ function frame(now) {
   }
 
   renderer.render(scene, camera);
+  charSelect.update(animNow / 1000);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

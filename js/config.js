@@ -122,6 +122,7 @@ export const BREEDS = {
   gsp: {
     kind: 'dog',
     label: 'The Dog',
+    desc: 'Pure focus. Built to sprint.',
     body: 0xf2ede3,        // white coat
     patches: 0x26211f,     // black patches
     head: 0x26211f,        // dark head like Kona
@@ -136,6 +137,7 @@ export const BREEDS = {
   golden: {
     kind: 'dog',
     label: 'Goldie',
+    desc: 'All heart, all floof.',
     body: 0xd9a441,
     patches: null,
     head: 0xd9a441,
@@ -150,6 +152,7 @@ export const BREEDS = {
   cat: {
     kind: 'cat',
     label: 'Tux',
+    desc: 'Dressed for the occasion.',
     body: 0x211f24,        // black coat
     patches: null,
     head: 0x211f24,
