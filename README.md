@@ -30,7 +30,19 @@ assets-only Cloudflare Worker — see `wrangler.jsonc`.
 npm run deploy
 ```
 
-That needs `wrangler login` once, and puts the game on your own Cloudflare
+For a link-free share — one file you can AirDrop or open straight off disk,
+no server, no `libs/` — build the standalone bundle instead:
+
+```
+npm run build:preview
+```
+
+That writes `fetch-run-preview.html` with every module inlined and three
+pulled from esm.sh (its only network dependency). **Re-run it after changing
+any source file**, or the committed copy goes stale — which is exactly what
+happened to the hand-made version it replaced.
+
+The Cloudflare deploy needs `wrangler login` once, and puts the game on your own Cloudflare
 account where you can manage or delete it. Adding `--temporary` to the
 `wrangler deploy` instead skips the login and publishes to a throwaway preview
 account — fine for handing someone a test link, but it isn't yours and it

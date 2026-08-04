@@ -1,6 +1,7 @@
 {
   "scripts": {
     "build": "rm -rf dist && mkdir -p dist && cp index.html styles.css dist/ && cp -R js libs dist/ && find dist -name '.DS_Store' -delete",
+    "build:preview": "node tools/build-preview.mjs",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
