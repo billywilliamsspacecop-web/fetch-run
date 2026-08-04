@@ -1,0 +1,11 @@
+{
+  // Static-assets-only Worker: there is no server side to this game, just
+  // index.html plus the js/ and libs/ it loads. `npm run build` refreshes
+  // dist/ from the source tree; nothing is bundled or transpiled.
+  "name": "fetch-run",
+  "compatibility_date": "2026-08-04",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

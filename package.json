@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "build": "rm -rf dist && mkdir -p dist && cp index.html styles.css dist/ && cp -R js libs dist/ && find dist -name '.DS_Store' -delete",
+    "deploy": "npm run build && wrangler deploy"
+  },
   "dependencies": {
     "three": "^0.185.1"
   }

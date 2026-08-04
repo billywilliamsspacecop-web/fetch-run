@@ -127,6 +127,15 @@ export class Sound {
     this.tone({ freq: 300, to: 720, dur: 0.22, type: 'triangle', gain: 0.34 });
   }
 
+  // Smashing out through the patio glass — a bright crack, then tinkling
+  // shards raining down after it.
+  glassSmash() {
+    this.noise({ dur: 0.5, gain: 0.45, type: 'highpass', freq: 2400 });
+    [2200, 3000, 1750, 2600, 3400].forEach((f, i) =>
+      this.tone({ freq: f, to: f * 0.55, dur: 0.16, type: 'triangle', gain: 0.14, delay: 0.03 + i * 0.055 })
+    );
+  }
+
   // Checkpoint / new stage
   checkpoint() {
     [660, 880].forEach((f, i) =>

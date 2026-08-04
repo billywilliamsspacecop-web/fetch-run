@@ -2,10 +2,21 @@ import { Vector3 } from 'three';
 import { CONFIG } from './config.js';
 import { laneAlpha, surfacePivot } from './world.js';
 import { Spawner } from './obstacles.js';
-import { THEMES, pickRareTheme } from './themes.js';
+import { THEMES, RARE_THEMES, pickRareTheme } from './themes.js';
 import { makeFence } from './fence.js';
 
 const _v = new Vector3();
+
+// Contact test for one frame. `prev`/`cur` are an entity's angular offset from
+// the runner at the START and END of the frame, and offsets only ever
+// increase, so the entity SWEEPS the interval [prev, cur].
+//
+// This has to be an interval overlap, not a point test on `cur`. A point test
+// only fires if a frame happens to land inside the window, and the window is
+// tiny (~0.03rad for a hitbox, 0.09 for a pickup). At the raised top speed an
+// entity covers ~0.2rad per frame, so it would step clean over the window and
+// obstacles would pass straight THROUGH the runner without registering.
+const swept = (prev, cur, halfWidth) => prev <= halfWidth && cur >= -halfWidth;
 
 // Game states: 'menu' -> 'intro' -> 'running' -> 'dead' -> ...
 // The intro is the chase short: squirrel bolts, runner follows, fence smashes.
@@ -21,11 +32,27 @@ export class Game {
     this.spawner = new Spawner(planetGroup);
     this.best = Number(localStorage.getItem('fetchrun.best') || 0);
 
+    // ?stages=rare — a dedicated test run through the special worlds only, in
+    // RARE_THEMES order, on a short stage so you reach all of them in a couple
+    // of minutes instead of waiting on a roll per theme block. The URL flag
+    // only ever turns it ON; the settings panel owns it from there.
+    if (new URLSearchParams(location.search).get('stages') === 'rare') CONFIG.rareOnly = true;
+
     this.state = 'menu';
     this._reset();
 
     input.onLaneShift = (dir) => this._moveTo(this.targetLane + dir);
     input.onAction = () => this.handleScreenTap();
+  }
+
+  // Read fresh every frame rather than cached at construction, so dragging a
+  // slider mid-run takes effect immediately.
+  get rareTest() {
+    return CONFIG.rareOnly;
+  }
+
+  get stageLength() {
+    return CONFIG.rareOnly ? CONFIG.rareTestStageLength : CONFIG.stageLength;
   }
 
   _rollThemeStages() {
@@ -35,15 +62,23 @@ export class Game {
 
   _reset() {
     this.paused = false;
+    this.countdown = 0;
+    this.ui.hideCountdown();
     this.time = 0;
     this.spin = 0;
     this.planetGroup.rotation.x = 0;
     this.distance = 0;
-    this.bonus = 0; // extra meters from score multipliers
+    this.score = 0;
+    this.mult = 1;
     this.speed = CONFIG.baseSpeed;
     this.stage = 1;
     this.lane = 2;
     this.targetLane = 2;
+    // Put the runner back in the CENTRE VISUALLY too. Only _updateRun writes
+    // dogPivot.rotation.z, so after dying out in lane 0 the model stayed
+    // parked there through the whole intro and then snapped to the middle the
+    // instant the run began — which is the jitter at the start of a restart.
+    this.dogPivot.rotation.z = laneAlpha(2);
     this.spawnTimer = 1.2; // grace period once the run proper starts
     this.balls = 0;
     this.collectStreak = 0;
@@ -58,10 +93,11 @@ export class Game {
     this.invulnTimer = 0;   // grace after a steak save
     // Themed levels: start in the first theme, move on after 2-4 stages
     this.themeIndex = 0;
-    this.theme = THEMES[0];
+    this.rareIndex = 0;
+    this.theme = this.rareTest ? RARE_THEMES[0] : THEMES[0];
     this.pendingTheme = null; // world waiting behind a door gate
     this.onThemeChange?.(this.theme);
-    this.stagesLeftInTheme = this._rollThemeStages();
+    this.stagesLeftInTheme = this.rareTest ? 1 : this._rollThemeStages();
     this.spawner.setTheme(this.theme);
     // Squirrel chase state
     this.sqLane = 2;
@@ -81,7 +117,9 @@ export class Game {
   // ---- input ----------------------------------------------------------
 
   _moveTo(lane) {
-    if (this.state !== 'running' || this.paused) return;
+    // Nothing moves during the post-pause countdown — including the runner.
+    // Accepting the swipe but not animating it reads as a dropped input.
+    if (this.state !== 'running' || this.paused || this.countdown > 0) return;
     const next = Math.max(0, Math.min(CONFIG.lanes - 1, lane));
     if (next !== this.targetLane) this.sfx?.lane();
     this.targetLane = next;
@@ -128,12 +166,22 @@ export class Game {
   pause() {
     if (this.state !== 'running' && this.state !== 'intro') return;
     this.paused = true;
+    this.countdown = 0; // a pause during a countdown restarts it on resume
+    this.ui.hideCountdown();
     this.ui.showPaused();
   }
 
   resume() {
     this.paused = false;
     this.ui.hidePaused();
+    // Hand the run back with the world held still for a beat. Without it you
+    // un-pause into whatever row was already on top of you, which is a death
+    // you had no say in. Past maxScore it's skipped: by then pausing is a
+    // breather you take repeatedly and the wait becomes the annoyance.
+    if (this.state === 'running' && this.score < CONFIG.pauseCountdown.maxScore) {
+      this.countdown = CONFIG.pauseCountdown.seconds;
+      this.ui.showCountdown(Math.ceil(this.countdown));
+    }
   }
 
   togglePause() {
@@ -145,6 +193,23 @@ export class Game {
 
   update(dt) {
     if (this.paused) return;
+    // Post-pause 3..2..1. The world is frozen — nothing spins, spawns or
+    // collides — but frames keep rendering, so you get to actually LOOK at the
+    // row you're about to run into before it starts moving again.
+    if (this.countdown > 0) {
+      const before = Math.ceil(this.countdown);
+      this.countdown -= dt;
+      const after = Math.ceil(this.countdown);
+      if (this.countdown <= 0) {
+        this.countdown = 0;
+        this.ui.hideCountdown();
+        this.sfx?.uiTap();
+      } else if (after !== before) {
+        this.ui.showCountdown(after);
+        this.sfx?.uiTap();
+      }
+      return;
+    }
     if (this.state === 'menu') {
       this.spin += 0.045 * dt;
       this.planetGroup.rotation.x = this.spin;
@@ -167,10 +232,14 @@ export class Game {
     this.introT += dt;
     const p = Math.min(1, this.introT / duration);
 
-    // Spin ramps up from a standstill — the world starts rolling
-    this.speed = CONFIG.baseSpeed * p;
+    // Spin ramps up from a standstill — the world starts rolling. Eased
+    // rather than linear so it creeps off the line and then winds up, instead
+    // of being at half speed a third of a second in.
+    this.speed = CONFIG.baseSpeed * Math.pow(p, CONFIG.intro.rampPower);
     this.spin += this.speed * dt;
     this.planetGroup.rotation.x = this.spin;
+    // Hold the runner centred for the whole cutscene
+    this.dogPivot.rotation.z = laneAlpha(this.lane);
 
     // Squirrel sprints from just behind the runner up to its chase spot
     const ease = 1 - Math.pow(1 - p, 2.2);
@@ -192,14 +261,20 @@ export class Game {
 
     // Score multipliers stack multiplicatively: Zoomies AND Golden Bone
     // together is 4x, which is the payoff for a lucky double pickup.
-    let mult = 1;
-    if (this.has('zoomies')) mult *= 2;
-    if (this.has('goldbone')) mult *= 2;
-    this.bonus += (mult - 1) * this.speed * CONFIG.metersPerRadian * dt;
-    this.distance = this.spin * CONFIG.metersPerRadian + this.bonus;
+    this.mult = 1;
+    if (this.has('zoomies')) this.mult *= 2;
+    if (this.has('goldbone')) this.mult *= 2;
+
+    // Distance is raw metres travelled — never multiplied, so the stage
+    // pacing and the "how far did I get" stat stay honest.
+    this.distance = this.spin * CONFIG.metersPerRadian;
+    // SCORE is the number the player actually chases, and it's driven by the
+    // same rotation, so speeding up scores faster by construction. Multipliers
+    // apply here (and to ball pickups) rather than to distance.
+    this.score += this.speed * CONFIG.metersPerRadian * this.mult * dt;
 
     // Stage checkpoints — and every 2-4 stages, a whole new themed world
-    const stageNow = 1 + Math.floor(this.distance / CONFIG.stageLength);
+    const stageNow = 1 + Math.floor(this.distance / this.stageLength);
     if (stageNow > this.stage) {
       this.stage = stageNow;
       this.stagesLeftInTheme -= 1;
@@ -209,7 +284,11 @@ export class Game {
         // next normal one. Rare stages last exactly one stage, and never
         // chain back-to-back, so they stay a surprise.
         let next;
-        if (!this.theme.rare && Math.random() < CONFIG.rareChance) {
+        if (this.rareTest) {
+          // Test run: straight through the specials on a loop, no gates.
+          this.rareIndex = (this.rareIndex + 1) % RARE_THEMES.length;
+          next = RARE_THEMES[this.rareIndex];
+        } else if (!this.theme.rare && Math.random() < CONFIG.rareChance) {
           next = pickRareTheme();
         } else {
           this.themeIndex = (this.themeIndex + 1) % THEMES.length;
@@ -225,6 +304,13 @@ export class Game {
           const doorCount = Math.random() < 0.45 ? 2 : 1;
           this.spawner.spawnDoorGate(this.spin, lanes.slice(0, doorCount));
           this.spawnTimer = Math.max(this.spawnTimer, 1.3); // keep the gate clear
+        } else if (this.theme.exitGate === 'glass') {
+          // Symmetry with the door gate: you came INTO this world through a
+          // wall, so you leave through one too. Same hold-the-old-look trick
+          // — the house has to still be around you when the glass arrives.
+          this.pendingTheme = next;
+          this.spawner.spawnGlassWall(this.spin);
+          this.spawnTimer = Math.max(this.spawnTimer, 1.3);
         } else {
           this._enterTheme(next);
           announced = true;
@@ -239,6 +325,13 @@ export class Game {
       CONFIG.maxSpeed,
       CONFIG.baseSpeed + (this.stage - 1) * CONFIG.stageSpeedBump
     );
+    // Slo-Mo drags the whole world down. Applied AFTER the stage curve so it
+    // scales with however fast you were going, and it costs distance for as
+    // long as it runs (score is derived from rotation) — that's the price.
+    if (this.has('slowmo')) this.speed *= CONFIG.powerups.slowmoFactor;
+    // Golden Bone's 2x comes with a nudge of real speed, so the multiplier is
+    // something you feel rather than just a number in the corner.
+    if (this.has('goldbone')) this.speed *= CONFIG.powerups.goldboneSpeedBump;
 
     // Powerup timers — each stacked power counts down independently
     for (const type of Object.keys(this.powers)) {
@@ -259,16 +352,24 @@ export class Game {
     // Spawning
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      if (this.has('yarn')) this.spawner.spawnBallRow(this.spin);
-      else this.spawner.spawnRow(this.spin);
-      const t = (this.speed - CONFIG.baseSpeed) / (CONFIG.maxSpeed - CONFIG.baseSpeed);
-      this.spawnTimer =
-        CONFIG.spawnBaseInterval - t * (CONFIG.spawnBaseInterval - CONFIG.spawnMinInterval);
+      if (this.has('yarn')) {
+        // Wait out the whole figure before laying down the next one, or the
+        // shapes overlap into an unreadable soup of balls.
+        const span = this.spawner.spawnBallRow(this.spin);
+        this.spawnTimer = span / Math.max(0.2, this.speed) + 0.25;
+      } else {
+        this.spawner.spawnRow(this.spin, this.speed);
+        const t = Math.min(1, Math.max(0,
+          (this.speed - CONFIG.baseSpeed) / (CONFIG.spawnRampSpeed - CONFIG.baseSpeed)));
+        this.spawnTimer =
+          CONFIG.spawnBaseInterval - t * (CONFIG.spawnBaseInterval - CONFIG.spawnMinInterval);
+      }
     }
 
     // Collisions / collection — the runner's line is at theta = dogTheta
     const dogT = CONFIG.dogTheta;
     const magnet = this.has('magnet');
+    const frenzy = this.has('yarn');
     for (const e of [...this.spawner.entities]) {
       const prev = spinBefore + e.theta0 - dogT;
       let cur = this.spin + e.theta0 - dogT;
@@ -277,10 +378,16 @@ export class Game {
       // Ball Magnet warps ANY pickup toward the runner — collectibles and
       // powerups alike. Pulling a steak or a frisbee to you is the best part
       // of having it, and "magnet only works on tennis balls" read as a bug.
-      if ((e.isBall || e.isPower) && magnet && !e.collected &&
+      // Ball Frenzy adds a gentle drift of its own — much weaker than the real
+      // magnet, just enough that a wall of balls collapses toward you instead
+      // of streaming past either side.
+      const frenzyPull = frenzy && e.isBall &&
+        laneDist < CONFIG.powerups.yarnMagnetLaneDist;
+      if ((e.isBall || e.isPower) && (magnet || frenzyPull) && !e.collected &&
           Math.abs(cur) < CONFIG.powerups.magnetWindow &&
-          laneDist < CONFIG.powerups.magnetLaneDist) {
-        const pull = Math.min(1, CONFIG.powerups.magnetPull * dt);
+          (magnet ? laneDist < CONFIG.powerups.magnetLaneDist : true)) {
+        const rate = magnet ? CONFIG.powerups.magnetPull : CONFIG.powerups.yarnMagnetPull;
+        const pull = Math.min(1, rate * dt);
         e.theta0 += (dogT - this.spin - e.theta0) * pull;
         e.lane += (this.lane - e.lane) * pull;
         e.pivot.rotation.x = e.theta0;
@@ -296,11 +403,18 @@ export class Game {
       if (e.isDoor) {
         // Bursting through the doorway — the reward for picking right, and
         // the moment the new world actually begins.
-        if (!e.collected && Math.abs(cur) < 0.03 && laneDist < 0.7) {
+        if (!e.collected && swept(prev, cur, 0.03) && laneDist < 0.7) {
           e.collected = true;
           e.group.getWorldPosition(_v);
-          this.fx?.plankBurst(_v);
-          this.spawner.remove(e);
+          if (e.isGlass) {
+            this.fx?.glassBurst(_v);
+            this.sfx?.glassSmash();
+            this.spawner.remove(e);
+            this._shatterGlass(); // the whole wall goes, not just your pane
+          } else {
+            this.fx?.plankBurst(_v);
+            this.spawner.remove(e);
+          }
           this._commitPendingTheme();
           continue;
         }
@@ -314,9 +428,10 @@ export class Game {
       }
 
       if (e.isBall) {
-        if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.65) {
+        if (!e.collected && swept(prev, cur, CONFIG.collectWindowAngle) && laneDist < 0.65) {
           e.collected = true;
           this.balls++;
+          this.score += CONFIG.pointsPerBall * this.mult;
           // Streak makes consecutive pickups play an ascending run
           this.collectStreak = this.time - (this._lastCollectAt ?? -9) < 1.1
             ? (this.collectStreak ?? 0) + 1 : 0;
@@ -329,7 +444,7 @@ export class Game {
           continue;
         }
       } else if (e.isPower) {
-        if (!e.collected && Math.abs(cur) < CONFIG.collectWindowAngle && laneDist < 0.6) {
+        if (!e.collected && swept(prev, cur, CONFIG.collectWindowAngle) && laneDist < 0.6) {
           e.collected = true;
           if (e.ptype === 'steak') {
             this.extraLives = Math.min(
@@ -338,9 +453,13 @@ export class Game {
             this.sfx?.extraLife();
           } else {
             // Stacks: adds to whatever is already running, up to a ceiling
+            // Ball Frenzy runs longer than the rest — it's a breather, and a
+            // short one barely fits a single shape on screen.
+            const dur = e.ptype === 'yarn'
+              ? CONFIG.powerups.yarnDuration : CONFIG.powerups.duration;
             this.powers[e.ptype] = Math.min(
-              CONFIG.powerups.maxDuration,
-              (this.powers[e.ptype] ?? 0) + CONFIG.powerups.duration
+              CONFIG.powerups.maxDuration + (e.ptype === 'yarn' ? dur : 0),
+              (this.powers[e.ptype] ?? 0) + dur
             );
             this.sfx?.powerup();
           }
@@ -351,9 +470,21 @@ export class Game {
           continue;
         }
       } else {
+        // Scorch burns down whatever wanders into your lane before it gets
+        // here. Checked ahead of the collision test so a hit can never land
+        // on something that should already be ash.
+        if (this.has('scorch') && !e.collected &&
+            cur < 0 && cur > -CONFIG.powerups.scorchWindow &&
+            laneDist < CONFIG.powerups.scorchLaneDist) {
+          e.collected = true;
+          e.group.getWorldPosition(_v);
+          this.fx?.scorch(_v);
+          this.spawner.remove(e);
+          continue;
+        }
         const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
         const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
-        if (Math.abs(cur) < hitAng && laneDist < hitLat) {
+        if (swept(prev, cur, hitAng) && laneDist < hitLat) {
           this.lastHitKind = e.kind; // picks the wipeout animation
           if (!this._survivesHit(e)) return;
           continue;
@@ -380,11 +511,23 @@ export class Game {
   // Commit to a world: swap props, colors and scenery, and announce it.
   _enterTheme(theme) {
     this.theme = theme;
-    this.stagesLeftInTheme = theme.rare ? 1 : this._rollThemeStages();
+    this.stagesLeftInTheme = theme.rare || this.rareTest ? 1 : this._rollThemeStages();
     this.spawner.setTheme(theme);
     this.onThemeChange?.(theme);
     this.ui.showStageBanner(this.stage, theme.label, theme.rare);
     if (theme.rare) this.sfx?.rareStage(); else this.sfx?.newTheme();
+  }
+
+  // Hitting one pane takes the whole wall out. Leaving the other panes
+  // standing looked like you'd found the one weak spot, when the point is
+  // that the runner is going too fast for a patio door to matter.
+  _shatterGlass() {
+    for (const g of [...this.spawner.entities]) {
+      if (!g.isGlass) continue;
+      g.group.getWorldPosition(_v);
+      this.fx?.glassBurst(_v);
+      this.spawner.remove(g);
+    }
   }
 
   // Called the moment the player clears a door gate (or it passes them by).
@@ -396,7 +539,11 @@ export class Game {
   }
 
   _survivesHit(e) {
+    if (CONFIG.invincible) return true;   // dev toggle
     if (this.invulnTimer > 0) return true;
+    // Blast Off: you're airborne, so the obstacle simply isn't in your way.
+    // No crash FX and the prop is left standing — you fly over it.
+    if (this.has('rocket')) return true;
     if (this.has('zoomies')) {
       // Invincible: plow straight through
       e.group.getWorldPosition(_v);
@@ -469,6 +616,20 @@ export class Game {
     obGnome: 'spinout', obSprinkler: 'spinout', obStroller: 'spinout',
     obHotDogCart: 'spinout', obCatTower: 'spinout',
     obTennisNet: 'tangle', obBallHopper: 'tangle', obUmpireChair: 'tangle',
+    // Rare stages. These all fell through to 'spinout' before, which made
+    // three whole worlds crash the same way.
+    obCloudBank: 'bounce', obGoldenBell: 'bounce',
+    obPillar: 'flatten', obAngelStatue: 'flatten',
+    obHarp: 'tangle', obGate: 'tangle',
+    obAngelGnome: 'spinout',
+    obLavaRock: 'flatten', obCauldron: 'flatten', obDemonDoghouse: 'flatten',
+    obSkullPile: 'trip', obPitchfork: 'tangle', obFireGeyser: 'bounce',
+    obDemonGnome: 'spinout',
+    obAsteroid: 'flatten', obSatellite: 'tangle', obSpaceRock: 'trip',
+    obUFO: 'spinout',
+    obAnchor: 'flatten', obTreasureChest: 'trip', obSeaUrchin: 'bounce',
+    obGiantClam: 'bounce', obCoral: 'spinout', obJellyfish: 'tangle',
+    obDoorPanel: 'flatten',
   };
 
   _die() {
@@ -480,11 +641,13 @@ export class Game {
     this.sfx?.wipeout();
     this.dogPivot.children[0]?.getWorldPosition(_v);
     this.fx?.crash(_v);
-    const d = Math.floor(this.distance);
-    this.isNewBest = d > this.best && d > 0;
+    // Best is now SCORE, not raw distance — score is what the run is judged
+    // on, and it already includes the speed you were carrying plus pickups.
+    const s = Math.floor(this.score);
+    this.isNewBest = s > this.best && s > 0;
     if (this.isNewBest) {
-      this.best = d;
-      localStorage.setItem('fetchrun.best', String(d));
+      this.best = s;
+      localStorage.setItem('fetchrun.best', String(s));
     }
     this.ui.recordRun(this);
     this.ui.showDeath(this);

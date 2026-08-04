@@ -20,10 +20,125 @@ export function laneAlpha(laneFloat) {
   return (2 - laneFloat) * CONFIG.laneAngle;
 }
 
+// The space stage's sky: a shell of stars plus a few galaxies, sitting well
+// outside the globe so the horizon occludes the lower half naturally. All of
+// it is fog-exempt and additive — fogged stars just turn the same colour as
+// the sky and vanish.
+const SKY_RADIUS = 78;
+
+// Untextured THREE.Points render as hard SQUARES, which at these sizes read
+// as blocky dead pixels rather than stars. A generated radial-gradient sprite
+// makes them round and soft — still no asset files, it's drawn in code.
+let _starSprite = null;
+function starSprite() {
+  if (_starSprite) return _starSprite;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.75)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _starSprite = new THREE.CanvasTexture(c);
+  return _starSprite;
+}
+
+function starPoints(count, size, color, opacity) {
+  const pos = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    // Uniform on a sphere: acos-distributed latitude, or the poles clump.
+    const u = Math.random() * 2 - 1;
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(1 - u * u);
+    const d = SKY_RADIUS * (0.85 + Math.random() * 0.3);
+    pos.set([Math.cos(a) * r * d, u * d, Math.sin(a) * r * d], i * 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  return new THREE.Points(geo, new THREE.PointsMaterial({
+    color, size, sizeAttenuation: true, transparent: true, opacity,
+    map: starSprite(), alphaTest: 0.02, depthWrite: false, fog: false,
+  }));
+}
+
+// Built face-on in the XY plane (the default orientation for both Torus and
+// Circle), so the whole group can simply be aimed at the camera and then
+// tipped back to taste.
+function makeGalaxy(tint) {
+  const g = new THREE.Group();
+  const glow = (c, o) => new THREE.MeshBasicMaterial({
+    color: c, transparent: true, opacity: o,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    side: THREE.DoubleSide,
+  });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.85, 12, 10), glow(0xfff2d8, 0.6));
+  g.add(core);
+  const halo = new THREE.Mesh(new THREE.CircleGeometry(3.2, 24), glow(0xfff0d0, 0.15));
+  g.add(halo);
+  // Fat, overlapping, slightly eccentric rings. Thin well-separated ones
+  // read as a bullseye rather than a galaxy — the tube radius has to be
+  // large enough relative to the spacing that they blend into one disc.
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.4 + i * 1.7, 1.0 + i * 0.45, 6, 32),
+      glow(tint, 0.13 - i * 0.025)
+    );
+    ring.scale.set(1.05 + i * 0.07, 0.92 - i * 0.05, 1);
+    ring.rotation.z = i * 0.4;
+    g.add(ring);
+  }
+  return g;
+}
+
+function buildStarfield(camera) {
+  const sky = new THREE.Group();
+  sky.visible = false; // only the space stage turns this on
+  // Sizes are in world units and scale by 1/distance, so at SKY_RADIUS these
+  // land at roughly 2-6px. Anything above ~0.6 turned into obvious blobs.
+  sky.add(starPoints(520, 0.22, 0xffffff, 0.95));
+  sky.add(starPoints(260, 0.38, 0xbfd8ff, 0.85));
+  sky.add(starPoints(110, 0.6, 0xffe9c0, 0.8));
+
+  // Galaxies are aimed in CAMERA space, not world space. Placed by world
+  // azimuth/elevation they kept landing outside the frustum: the camera is
+  // pitched ~34 degrees down and portrait is narrow, so the strip of sky
+  // actually on screen is only about 20 degrees tall and 35 wide. Offsetting
+  // from the camera's own forward vector puts them where they can be seen,
+  // and stays correct if the camera is ever re-framed.
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+  const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+
+  const tints = [0x8f6fe8, 0x4f9ad8, 0xe86f9a, 0x5fd8c0];
+  // [yaw, pitch, scale, tilt] — pitch 0.2-0.55rad is the band above the horizon
+  const spots = [
+    [-0.17, 0.27, 0.62, 1.1], [0.15, 0.44, 0.8, 0.75],
+    [0.02, 0.56, 0.5, 1.3], [-0.3, 0.5, 0.55, 0.9],
+  ];
+  for (let i = 0; i < spots.length; i++) {
+    const gal = makeGalaxy(tints[i]);
+    const [yaw, pitch, scale, tilt] = spots[i];
+    const dir = fwd.clone()
+      .addScaledVector(right, Math.tan(yaw))
+      .addScaledVector(up, Math.tan(pitch))
+      .normalize();
+    gal.position.copy(camera.position).addScaledVector(dir, SKY_RADIUS);
+    gal.lookAt(camera.position); // face-on, then tip back so it reads as a disc
+    gal.rotateX(tilt);
+    gal.rotateZ(i * 0.7);
+    gal.scale.setScalar(scale);
+    sky.add(gal);
+  }
+  return sky;
+}
+
 // Builds the whole world. Every theme's scenery is built once into its own
 // group; only the active theme's group is visible, so switching levels is a
 // visibility toggle rather than a rebuild (all primitives, cheap to hold).
-export function buildWorld(scene) {
+export function buildWorld(scene, camera) {
   P.resetCanopyMats();
 
   const first = THEMES[0];
@@ -92,7 +207,7 @@ export function buildWorld(scene) {
       const place = (theta, side, jitter) => {
         const alpha = side * (clearance + spec.near + jitter * span);
         const obj = spec.make();
-        obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+        obj.traverse((o) => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; });
         group.add(surfacePivot(theta, alpha, obj));
       };
       if (spec.even) {
@@ -117,8 +232,11 @@ export function buildWorld(scene) {
   // Lane-divider dashes ring the whole globe — they scroll with the spin and
   // sell the "world rolling toward you" feel. Instanced: one draw call.
   const dashGeo = new THREE.BoxGeometry(0.05, 0.02, 0.34);
+  // Opacity raised from 0.55: the ticks are now a contrasting colour per
+  // theme (heaven's are near-black on a white floor), and at 0.55 the darker
+  // ones washed out into the ground they're supposed to stand against.
   const dashMat = new THREE.MeshBasicMaterial({
-    color: first.dash, transparent: true, opacity: 0.55,
+    color: first.dash, transparent: true, opacity: 0.8,
   });
   const boundaries = [];
   for (let b = -2.5; b <= 2.5; b++) boundaries.push(b * CONFIG.laneAngle);
@@ -174,8 +292,31 @@ export function buildWorld(scene) {
   sunDisc.lookAt(0, R + 5, 8.6);
   scene.add(sunDisc);
 
+  const starfield = buildStarfield(camera);
+  scene.add(starfield);
+
+  // Bubbles drifting through the water column (underwater stage only). Same
+  // trick as the clouds — parked on orbiting pivots above the surface — but
+  // they rise as well as orbit, which is what sells "submerged" over "foggy".
+  const bubbles = [];
+  const bubbleMat = new THREE.MeshLambertMaterial({
+    color: 0xdff6ff, transparent: true, opacity: 0.34, flatShading: true,
+  });
+  for (let i = 0; i < 26; i++) {
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.1 + Math.random() * 0.22, 8, 6), bubbleMat);
+    const side = i % 2 === 0 ? -1 : 1;
+    const alpha = side * (0.06 + Math.random() * 0.5);
+    const pivot = surfacePivot(Math.random() * Math.PI * 2, alpha, b, R + 1 + Math.random() * 7);
+    pivot.userData.speed = 0.05 + Math.random() * 0.09;  // orbit (toward camera)
+    pivot.userData.rise = 0.5 + Math.random() * 1.1;     // upward drift
+    pivot.userData.baseY = b.position.y;
+    pivot.visible = false;
+    scene.add(pivot);
+    bubbles.push(pivot);
+  }
+
   return {
-    planetGroup, clouds, sunDisc, sceneryGroups, tufts,
+    planetGroup, clouds, sunDisc, sceneryGroups, tufts, starfield, bubbles,
     lights: { hemi, sun },
     tintables: {
       planetMat: planet.material,

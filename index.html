@@ -16,22 +16,29 @@
   <pre id="debug-overlay" class="hidden"></pre>
 
   <button id="btn-pause" class="pause-btn hidden" aria-label="Pause">❙❙</button>
-  <button id="btn-mute" class="mute-btn" aria-label="Toggle sound">🔊</button>
+  <button id="btn-mute" class="mute-btn" aria-label="Toggle sound"></button>
 
   <div id="hud" class="overlay hidden">
-    <div id="hud-distance">0m</div>
-    <div id="hud-balls">🎾 0</div>
-    <div id="hud-closecalls"></div>
+    <div id="hud-top">
+      <div id="hud-distance">0m</div>
+      <div id="hud-balls">0</div>
+      <div id="hud-bank"></div>
+      <div id="stage-banner" class="hidden"></div>
+      <div id="hud-closecalls"></div>
+    </div>
     <div id="hud-power" class="hidden"></div>
-    <div id="hud-life" class="hidden">🥩 EXTRA LIFE</div>
-    <div id="stage-banner" class="hidden"></div>
+    <div id="hud-life" class="hidden">EXTRA LIFE</div>
   </div>
+
+  <div id="dev-flag" class="hidden"></div>
+  <div id="countdown" class="hidden"><span id="countdown-num"></span></div>
 
   <div id="paused" class="overlay hidden">
     <div class="card">
       <h2>PAUSED</h2>
       <div class="death-actions" style="margin-top: 18px;">
         <button id="btn-resume" class="action-btn primary">RESUME</button>
+        <button id="btn-pause-settings" class="action-btn">SETTINGS</button>
         <button id="btn-pause-home" class="action-btn">HOME</button>
       </div>
     </div>
@@ -45,7 +52,8 @@
     <div class="menu-actions">
       <button id="btn-play" class="action-btn primary">PLAY</button>
       <button id="btn-characters" class="action-btn">CHARACTERS</button>
-      <button id="btn-shop" class="action-btn">🎾 SHOP</button>
+      <button id="btn-shop" class="action-btn">SHOP</button>
+      <button id="btn-settings" class="action-btn">SETTINGS</button>
     </div>
     <p class="hint swipe-hint">swipe left / right to change lanes</p>
   </div>
@@ -68,9 +76,24 @@
     <div class="card shop-card">
       <h2>SHOP</h2>
       <p id="shop-bank" class="best"></p>
+      <div id="shop-preview">
+        <div id="shop-preview-stage"></div>
+        <p id="shop-preview-label"></p>
+      </div>
       <div id="shop-items"></div>
     </div>
     <button id="btn-shop-close" class="action-btn primary shop-done">DONE</button>
+  </div>
+
+  <div id="settings" class="overlay hidden">
+    <div class="card settings-card">
+      <h2>SETTINGS</h2>
+      <p class="settings-note">changes apply instantly, mid-run</p>
+      <div id="settings-items"></div>
+      <button id="btn-dev-off" class="settings-reset dev-off hidden">TURN OFF ALL DEV TOOLS</button>
+      <button id="btn-settings-reset" class="settings-reset">RESET TO DEFAULTS</button>
+    </div>
+    <button id="btn-settings-close" class="action-btn primary shop-done">DONE</button>
   </div>
 
   <div id="intro-hint" class="overlay hidden">
@@ -83,17 +106,18 @@
       <p id="death-distance" class="big-distance"></p>
       <p id="death-best" class="best"></p>
       <div class="stat-rows">
+        <div class="row"><span>distance</span><b id="d-dist"></b></div>
         <div class="row"><span>stage</span><b id="d-stage"></b></div>
         <div class="row"><span>time</span><b id="d-time"></b></div>
         <div class="row"><span>top speed</span><b id="d-speed"></b></div>
-        <div class="row"><span>🎾 collected</span><b id="d-balls"></b></div>
+        <div class="row"><span>balls collected</span><b id="d-balls"></b></div>
         <div class="row"><span>close calls</span><b id="d-close"></b></div>
       </div>
       <p class="subhead">LIFETIME</p>
       <div class="stat-rows small">
         <div class="row"><span>runs</span><b id="l-runs"></b></div>
         <div class="row"><span>distance</span><b id="l-dist"></b></div>
-        <div class="row"><span>🎾 banked</span><b id="l-balls"></b></div>
+        <div class="row"><span>balls banked</span><b id="l-balls"></b></div>
       </div>
       <p class="subhead">RECENT RUNS</p>
       <div id="recent-runs" class="recent"></div>

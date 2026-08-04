@@ -198,30 +198,128 @@ html, body {
 }
 
 /* --- HUD --- */
+/* Power/life pills sit top-CENTRE, cleared below the mute + pause buttons so
+   nothing in the corner row overlaps them. */
 #hud {
   justify-content: flex-start;
-  padding-top: max(18px, env(safe-area-inset-top));
+  padding-top: calc(env(safe-area-inset-top, 0px) + 62px);
   pointer-events: none;
   gap: 2px;
 }
 
+/* Score + stage readout, tucked into the top-right corner under the pause
+   button. Small on purpose: it's glanced at, not read, and the middle of the
+   screen belongs to the track. It scales up briefly on a stage change (see
+   .pop) so the announcement still lands without a full-screen banner. */
+#hud-top {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 62px);
+  right: 16px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  text-align: right;
+  pointer-events: none;
+  transform-origin: 100% 0;   /* grows from the corner, never off-screen */
+}
+
+#hud-top.pop {
+  animation: hudPop 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes hudPop {
+  0% { transform: scale(1); }
+  12% { transform: scale(1.5); }
+  30% { transform: scale(1.34); }
+  100% { transform: scale(1); }
+}
+
 #hud-distance {
-  font-size: 32px;
+  font-size: 20px;
   font-weight: 900;
-  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.28);
+  line-height: 1.1;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
 }
 
 #hud-balls {
-  font-size: 17px;
+  font-size: 13px;
   font-weight: 800;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Lifetime ball bank, sitting under the run's own counter. Deliberately
+   quieter than it: the run total is what you're playing for right now, the
+   bank is what you're saving toward. */
+#hud-bank {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  opacity: 0.6;
+  margin-top: -1px;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
 }
 
 #hud-closecalls {
-  font-size: 14px;
+  font-size: 11px;
   font-weight: 800;
   color: #ffd54f;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Post-pause 3..2..1. Full-screen and unmissable, but the backdrop stays
+   nearly clear — the whole point is to let you READ the track underneath it
+   before it starts moving again. */
+#countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+#countdown-num {
+  font-size: 132px;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 0 40px rgba(255, 255, 255, 0.55);
+  animation: countTick 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes countTick {
+  0% { transform: scale(1.85); opacity: 0; }
+  18% { transform: scale(1); opacity: 1; }
+  75% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.85); opacity: 0.35; }
+}
+
+/* Dev tools are a mode you can forget you're in — Invincible looks exactly
+   like a collision bug. This says which ones are live, from anywhere. */
+#dev-flag {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
+  z-index: 70;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(124, 252, 79, 0.9);
+  color: #12300a;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dev-off {
+  margin-top: 10px;
+  background: rgba(124, 252, 79, 0.18) !important;
+  color: #b6ff8f !important;
 }
 
 #intro-hint {
@@ -239,7 +337,10 @@ html, body {
 }
 
 #hud-life {
-  margin-top: 4px;
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
   padding: 3px 12px;
   border-radius: 999px;
   background: rgba(220, 80, 60, 0.85);
@@ -250,14 +351,20 @@ html, body {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
-/* Powers stack, so this is a row of pills that grows rather than one slot */
+/* Powers stack, so this is a row of pills that grows rather than one slot.
+   Anchored to the BOTTOM: at the top a third active power wrapped into the
+   score cluster in the corner and covered it. Down here there's nothing to
+   collide with, and the row can grow as far as it likes. */
 #hud-power {
-  margin-top: 6px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 62px);
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 5px;
-  max-width: 92vw;
+  padding: 0 12px;
 }
 
 #hud-power .pw {
@@ -271,49 +378,48 @@ html, body {
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
 }
 
-/* Sits high on the screen, above the horizon line where obstacles crest,
-   so it never hides something you have to dodge. Semi-transparent with a
-   heavy outline for the same reason - you can read oncoming props THROUGH
-   it if one does line up behind the text. */
+/* Lives inside the top-right cluster now rather than across the middle of
+   the screen. A full-width banner sat right where obstacles crest the
+   horizon; here it can't cover anything you have to dodge. */
 #stage-banner {
-  margin-top: 3vh;
-  font-size: 34px;
+  margin-top: 2px;
+  font-size: 13px;
   font-weight: 900;
-  letter-spacing: 2px;
-  color: rgba(255, 213, 79, 0.82);
-  -webkit-text-stroke: 1.5px rgba(90, 45, 0, 0.55);
+  letter-spacing: 1.5px;
+  color: rgba(255, 213, 79, 0.95);
+  -webkit-text-stroke: 0.8px rgba(90, 45, 0, 0.5);
   paint-order: stroke fill;
-  text-shadow: 0 3px 0 rgba(140, 70, 0, 0.35);
+  text-shadow: 0 2px 0 rgba(140, 70, 0, 0.3);
   animation: stagePop 1.6s ease-out forwards;
 }
 
 #stage-banner.with-theme {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
+  align-items: flex-end;
+  gap: 0;
 }
 
 .banner-sub {
-  font-size: 15px;
+  font-size: 10px;
   font-weight: 800;
-  letter-spacing: 4px;
-  color: rgba(255, 246, 224, 0.85);
-  -webkit-text-stroke: 1px rgba(90, 45, 0, 0.5);
+  letter-spacing: 2px;
+  color: rgba(255, 246, 224, 0.9);
+  -webkit-text-stroke: 0.6px rgba(90, 45, 0, 0.45);
   paint-order: stroke fill;
 }
 
 /* Rare stages announce themselves — brighter, held a beat longer */
 #stage-banner.rare {
-  color: rgba(255, 255, 255, 0.95);
-  -webkit-text-stroke: 2px rgba(120, 60, 160, 0.6);
+  color: rgba(255, 255, 255, 0.98);
+  -webkit-text-stroke: 1px rgba(120, 60, 160, 0.6);
   animation: stagePop 2.4s ease-out forwards;
 }
 
 #stage-banner.rare .banner-sub {
-  color: rgba(255, 236, 140, 0.95);
-  -webkit-text-stroke: 1.2px rgba(120, 60, 160, 0.55);
-  letter-spacing: 5px;
+  color: rgba(255, 236, 140, 0.98);
+  -webkit-text-stroke: 0.7px rgba(120, 60, 160, 0.55);
+  letter-spacing: 2.5px;
 }
 
 @keyframes stagePop {
@@ -646,8 +752,10 @@ html, body {
   opacity: 0.85;
 }
 
+/* Locked chips stay legible and keep their icon in full colour — you can't
+   want something you can't see. Only the chip's own background recedes. */
 .shop-chip.locked {
-  opacity: 0.7;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .chip-icon {
@@ -662,11 +770,39 @@ html, body {
   background: rgba(0, 0, 0, 0.18);
 }
 
-.chip-icon.collar-swatch {
+/* Baked 3D icons (see js/icons.js). Sized in em so they scale with whatever
+   text they sit beside, and nudged down a hair to sit on the text baseline. */
+.inline-icon {
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -0.28em;
+  object-fit: contain;
+}
+
+.inline-icon.tiny {
+  width: 0.9em;
+  height: 0.9em;
+  vertical-align: -0.12em;
+}
+
+.btn-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.chip-img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.chip-icon.swatch {
   font-size: 0;
 }
 
-.chip-icon.collar-swatch::after {
+.chip-icon.swatch::after {
   content: "";
   width: 24px;
   height: 24px;
@@ -675,11 +811,203 @@ html, body {
   box-sizing: border-box;
 }
 
-.locked .chip-icon {
-  filter: grayscale(0.85) brightness(0.65);
+/* Sticks to the top of the scrolling shop card, so tapping a trail or chase
+   chip near the bottom still shows you what you just picked. */
+/* ---- settings panel ---- */
+
+#settings {
+  background: rgba(20, 22, 30, 0.62);
+  gap: 14px;
 }
 
-#shop .shop-done {
+.settings-card {
+  width: min(90vw, 420px);
+  max-height: 74vh;
+  overflow-y: auto;
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(16, 16, 24, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.settings-card h2 {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+.settings-note {
+  font-size: 12px;
+  letter-spacing: 1px;
+  opacity: 0.6;
+  margin-bottom: 14px;
+}
+
+.setting {
+  text-align: left;
+  padding: 11px 0 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.setting-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.setting-head b {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.setting-val {
+  font-size: 14px;
+  font-weight: 900;
+  color: #ffc93d;
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-hint {
+  font-size: 11px;
+  opacity: 0.55;
+  margin-top: 1px;
+  line-height: 1.35;
+}
+
+.setting input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 26px;          /* generous touch target, not the visual height */
+  margin-top: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.setting input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.setting input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.setting input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 50%;
+  background: linear-gradient(#ffe082, #ffc93d);
+  border: none;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.setting input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 50%;
+  background: #ffc93d;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.setting-toggle {
+  margin-top: 8px;
+  width: 100%;
+  padding: 9px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  border: none;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  cursor: pointer;
+}
+
+.setting-toggle.on {
+  background: linear-gradient(#ffe082, #ffc93d);
+  color: #402a10;
+}
+
+.dev-head {
+  margin-top: 18px;
+  color: #7cfc4f;
+  opacity: 0.85;
+}
+
+.setting.dev .setting-toggle.on {
+  background: linear-gradient(#b6ff8f, #7cfc4f);
+  color: #1c3a10;
+}
+
+.settings-reset {
+  margin-top: 16px;
+  width: 100%;
+  padding: 11px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.75);
+  cursor: pointer;
+}
+
+#shop-preview {
+  position: sticky;
+  top: -20px; /* cancels .shop-card's padding so nothing peeks above it */
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 2px -20px 6px;
+  padding: 6px 20px 8px;
+  /* Fully opaque on purpose: the chips scroll UNDER this, and even 3%
+     translucency was enough for their bright labels to ghost through. */
+  background: #241708;
+  box-shadow: 0 8px 14px rgba(0, 0, 0, 0.3);
+}
+
+#shop-preview-stage {
+  width: min(52vw, 190px);
+  height: min(52vw, 190px);
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.22));
+}
+
+#shop-preview-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#shop-preview-label {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+/* .action-btn is flex:1, which in these column overlays stretches the button
+   down the whole remaining height. Both full-card panels need the override. */
+#shop .shop-done,
+#settings .shop-done {
   flex: none;
   width: min(90vw, 420px);
 }

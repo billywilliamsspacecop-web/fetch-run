@@ -21,6 +21,21 @@ npx serve .
 
 Desktop testing: arrow keys or number keys 1-5 to change lanes, Space/Enter to start.
 
+## Deploy
+
+`dist/` is just a copy of the playable files (no bundling), served by an
+assets-only Cloudflare Worker — see `wrangler.jsonc`.
+
+```
+npm run deploy
+```
+
+That needs `wrangler login` once, and puts the game on your own Cloudflare
+account where you can manage or delete it. Adding `--temporary` to the
+`wrangler deploy` instead skips the login and publishes to a throwaway preview
+account — fine for handing someone a test link, but it isn't yours and it
+doesn't stick around.
+
 ## Design decisions (from planning chat, Jul 30 2026)
 
 - 5 fixed lanes, portrait, one-thumb control
