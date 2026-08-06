@@ -134,7 +134,7 @@ window.addEventListener('orientationchange', onViewportChange);
 window.visualViewport?.addEventListener('resize', onViewportChange);
 
 // --- world + dog + fx ---
-const { planetGroup, clouds, sunDisc, sceneryGroups, tufts, starfield, bubbles, lights, tintables } =
+const { planetGroup, clouds, sunDisc, sceneryGroups, tufts, tuftOutline, starfield, bubbles, lights, tintables } =
   buildWorld(scene, camera);
 const fx = new FX(scene);
 const sfx = new Sound();
@@ -309,10 +309,31 @@ function applyThemeSwap(theme) {
   for (const b of bubbles) b.visible = !!theme.caustics;
   // Grass tufts only make sense on natural ground, not courts or floors
   tufts.visible = theme.tufts !== false;
+  tuftOutline.visible = tufts.visible;
   shownThemeId = theme.id;
 }
 
+// The scenery outline shells, gathered once so the quality toggle is a flat
+// pass over an array rather than a traverse of every scenery group in the
+// game. Only collected on demand — most sessions never touch the setting.
+let sceneryOutlineMeshes = null;
+let sceneryOutlinesShown = true;
+
+function applySceneryOutlines() {
+  const want = CONFIG.sceneryOutlines;
+  if (want === sceneryOutlinesShown) return;
+  if (!sceneryOutlineMeshes) {
+    sceneryOutlineMeshes = [];
+    for (const grp of Object.values(sceneryGroups)) {
+      grp.traverse((o) => { if (o.userData.isOutline) sceneryOutlineMeshes.push(o); });
+    }
+  }
+  for (const o of sceneryOutlineMeshes) o.visible = want;
+  sceneryOutlinesShown = want;
+}
+
 function lerpTheme(dt) {
+  applySceneryOutlines();
   const theme = game.state === 'menu' ? THEMES[0] : game.theme;
   if (theme.id !== shownThemeId) applyThemeSwap(theme);
 

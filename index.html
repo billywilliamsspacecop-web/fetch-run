@@ -80,6 +80,11 @@
         <div id="shop-preview-stage"></div>
         <p id="shop-preview-label"></p>
       </div>
+      <div id="shop-sort" class="tabs sort-row">
+        <button class="tab on" data-sort="type">BY TYPE</button>
+        <button class="tab" data-sort="price">BY PRICE</button>
+        <button class="tab" data-sort="owned">NOT OWNED</button>
+      </div>
       <div id="shop-items"></div>
     </div>
     <button id="btn-shop-close" class="action-btn primary shop-done">DONE</button>
@@ -88,10 +93,25 @@
   <div id="settings" class="overlay hidden">
     <div class="card settings-card">
       <h2>SETTINGS</h2>
-      <p class="settings-note">changes apply instantly, mid-run</p>
-      <div id="settings-items"></div>
-      <button id="btn-dev-off" class="settings-reset dev-off hidden">TURN OFF ALL DEV TOOLS</button>
-      <button id="btn-settings-reset" class="settings-reset">RESET TO DEFAULTS</button>
+      <div class="tabs" id="settings-tabs">
+        <button class="tab on" data-tab="game">GAME</button>
+        <button class="tab" data-tab="stats">STATS</button>
+        <button class="tab" data-tab="dev">DEV</button>
+      </div>
+      <div id="tab-game" class="tab-panel">
+        <p class="settings-note">changes apply instantly, mid-run</p>
+        <div id="settings-items"></div>
+        <button id="btn-settings-reset" class="settings-reset">RESET TO DEFAULTS</button>
+      </div>
+      <div id="tab-stats" class="tab-panel hidden">
+        <div id="stats-body"></div>
+        <button id="btn-stats-reset" class="settings-reset danger">CLEAR ALL STATS</button>
+      </div>
+      <div id="tab-dev" class="tab-panel hidden">
+        <p class="settings-note dev-note">these do not persist — they reset when the game reloads</p>
+        <div id="dev-items"></div>
+        <button id="btn-dev-off" class="settings-reset dev-off hidden">TURN OFF ALL DEV TOOLS</button>
+      </div>
     </div>
     <button id="btn-settings-close" class="action-btn primary shop-done">DONE</button>
   </div>

@@ -48,13 +48,39 @@ const outlineMat = (color) => {
   return _outlineMats.get(color);
 };
 
-export function addOutline(group, { thickness = 0.05, color = 0x21203a } = {}) {
+// Idempotent: a group that already carries outlines is left alone, so props
+// that outline themselves (the heaven set, which needs a heavier line than the
+// rest) don't get a second shell when the spawner outlines everything centrally.
+//
+// `minRadius` skips parts below a size. Every shell is its own draw call, and
+// scenery is built from hundreds of objects rather than the handful a spawn row
+// holds — so out in the background the sub-centimetre details (a tree's fruit,
+// a flower's stem) are dropped. They're a pixel wide at that distance; the
+// silhouette that actually reads is the trunk and the canopy.
+export function addOutline(group, {
+  thickness = 0.05, color = 0x21203a, minRadius = 0,
+} = {}) {
+  if (!group || group.userData.outlined) return group;
+  group.userData.outlined = true;
   const mat = outlineMat(color);
   const targets = [];
   group.traverse((o) => {
     // Transparent parts (spray, glow, gauze) have no silhouette worth tracing,
     // and a solid shell behind them would show straight through.
-    if (o.isMesh && !o.userData.isOutline && !(o.material && o.material.transparent)) {
+    // `noOutline` is for detail that sits FLUSH on a surface and repeats a lot
+    // — a building's window panes, an igloo's blocks, the art inside a picture
+    // frame. Each shell is a draw call, these are the meshes there are hundreds
+    // of, and they have no silhouette of their own to trace: they're texture,
+    // drawn in geometry because this game has no texture files.
+    if (o.isMesh && !o.userData.isOutline && !o.userData.noOutline
+        && !(o.material && o.material.transparent)) {
+      if (minRadius > 0) {
+        if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+        // Measured in the mesh's own space then scaled, so a part that was
+        // modelled small but blown up by a parent still counts as big.
+        const s = Math.max(o.scale.x, o.scale.y, o.scale.z);
+        if (o.geometry.boundingSphere.radius * s < minRadius) return;
+      }
       targets.push(o);
     }
   });
@@ -66,13 +92,35 @@ export function addOutline(group, { thickness = 0.05, color = 0x21203a } = {}) {
     // string outlined as boldly as a fat pillar.
     const r = Math.max(0.05, m.geometry.boundingSphere.radius);
     const shell = new THREE.Mesh(m.geometry, mat);
-    shell.position.copy(m.position);
-    shell.quaternion.copy(m.quaternion);
-    shell.scale.copy(m.scale).multiplyScalar(1 + thickness / r);
+    shell.scale.setScalar(1 + thickness / r);
     shell.userData.isOutline = true;
-    m.parent.add(shell);
+    shell.castShadow = false;
+    shell.receiveShadow = false;
+    // Parented to the mesh itself, NOT alongside it. A sibling copies the
+    // transform once at build time and then goes stale the moment anything
+    // moves — which is every leg, ear and tail on a running character, and
+    // every flickering flame and swaying tentacle on an obstacle. As a child
+    // it inherits the animation for free.
+    m.add(shell);
   }
   return group;
+}
+
+// The instanced version. InstancedMesh can't take a per-instance child, so the
+// shell is a whole second InstancedMesh sharing the SAME matrices — which is
+// why the caller passes a pre-fattened geometry rather than a scale factor:
+// scaling the matrix would also move each instance off the surface, and
+// scaling a thin slab uniformly makes the outline thick on the long axis and
+// invisible on the short one. Costs exactly one extra draw call.
+export function outlineInstanced(src, fatGeo, color = 0x21203a) {
+  const shell = new THREE.InstancedMesh(fatGeo, outlineMat(color), src.count);
+  shell.instanceMatrix.array.set(src.instanceMatrix.array);
+  shell.instanceMatrix.needsUpdate = true;
+  shell.userData.isOutline = true;
+  shell.castShadow = false;
+  shell.receiveShadow = false;
+  shell.renderOrder = -1; // behind its source, so the front faces cover the middle
+  return shell;
 }
 
 const haloMat = (color, opacity) =>
@@ -1207,6 +1255,7 @@ export function scHouseWall() {
       g.add(frame);
       const art = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.34, 0.44), lambert(c));
       art.position.set(face * 0.13, 1.4, z);
+      art.userData.noOutline = true; // the frame around it already carries the line
       g.add(art);
     }
   }
@@ -2150,6 +2199,1350 @@ export function scBubbleColumn() {
 // Both the runner and the quarry get a little ship so the chase continues
 // in orbit. The character sits in the cockpit rather than being replaced.
 
+// ===================== BEACH DAY (common) =====================
+// Bright, chunky holiday clutter on pale sand. Everything here is saturated
+// on purpose: the ground is the lightest of any outdoor stage, so the muted
+// browns and greys that read fine on grass would vanish on it.
+
+const SAND_DARK = 0xd9b877;
+const BEACH_RED = 0xe4574c;
+const BEACH_TEAL = 0x2fa8b8;
+
+export function obSandcastle() {
+  const g = new THREE.Group();
+  const mat = lambert(SAND_DARK);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.3, 0.62), mat);
+  base.position.y = 0.15;
+  g.add(base);
+  const keep = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.34, 0.34), mat);
+  keep.position.y = 0.47;
+  g.add(keep);
+  // Corner turrets, each capped with a cone — the silhouette is what says
+  // "sandcastle" at speed, not the texture.
+  for (const [x, z] of [[-0.32, -0.22], [0.32, -0.22], [-0.32, 0.22], [0.32, 0.22]]) {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.42, 8), mat);
+    t.position.set(x, 0.51, z);
+    g.add(t);
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.2, 8), mat);
+    cap.position.set(x, 0.82, z);
+    g.add(cap);
+  }
+  const flag = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.3, 6), lambert(0x8a6a44));
+  flag.position.y = 0.79;
+  g.add(flag);
+  const cloth = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.01), lambert(BEACH_RED));
+  cloth.position.set(0.08, 0.88, 0);
+  g.add(cloth);
+  return g;
+}
+
+export function obBeachUmbrella() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.1, 8), lambert(0xe8e2d4));
+  pole.position.y = 0.55;
+  g.add(pole);
+  // Built as wedges rather than one cone so it can be striped, which is the
+  // whole reason a beach umbrella reads as a beach umbrella.
+  const seg = 10;
+  for (let i = 0; i < seg; i++) {
+    const wedge = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.56, 0.3, 4, 1, false,
+        (i / seg) * Math.PI * 2, (Math.PI * 2) / seg),
+      lambert(i % 2 ? BEACH_RED : 0xf7f2e6)
+    );
+    wedge.position.y = 1.0;
+    g.add(wedge);
+  }
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), lambert(BEACH_RED));
+  knob.position.y = 1.18;
+  g.add(knob);
+  g.rotation.y = Math.random() * Math.PI;
+  return g;
+}
+
+export function obCooler() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.42, 0.48), lambert(BEACH_TEAL));
+  body.position.y = 0.21;
+  g.add(body);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.1, 0.52), lambert(0xf2f4f2));
+  lid.position.y = 0.47;
+  g.add(lid);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.025, 6, 12, Math.PI), lambert(0x35393d));
+  handle.position.set(0, 0.52, 0);
+  handle.rotation.y = Math.PI / 2;
+  g.add(handle);
+  // A bottle poking out of the ice, so it's a cooler in use
+  const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.22, 8), lambert(0x8fd8a0));
+  bottle.position.set(0.2, 0.58, 0.1);
+  bottle.rotation.z = 0.3;
+  g.add(bottle);
+  return g;
+}
+
+export function obDeckChair() {
+  const g = new THREE.Group();
+  const frame = lambert(0xb8843f);
+  const canvas = lambert(0xf0c64a);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.06, 0.5), canvas);
+  seat.position.y = 0.3;
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.06), canvas);
+  back.position.set(0, 0.5, -0.24);
+  back.rotation.x = -0.42;
+  g.add(back);
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.05), frame);
+    leg.position.set(sx * 0.27, 0.15, 0.2);
+    g.add(leg);
+    const rear = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.3, 0.05), frame);
+    rear.position.set(sx * 0.27, 0.14, -0.2);
+    g.add(rear);
+  }
+  return g;
+}
+
+export function obLifeguardStand() {
+  const g = new THREE.Group();
+  const wood = lambert(0xdcc39a);
+  for (const [x, z] of [[-0.3, -0.24], [0.3, -0.24], [-0.3, 0.24], [0.3, 0.24]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.85, 0.08), wood);
+    leg.position.set(x, 0.42, z);
+    g.add(leg);
+  }
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.09, 0.62), wood);
+  deck.position.y = 0.88;
+  g.add(deck);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.42, 0.07), wood);
+  back.position.set(0, 1.12, -0.28);
+  g.add(back);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.055, 8, 16), lambert(BEACH_RED));
+  ring.position.set(0, 1.1, 0.3);
+  g.add(ring);
+  return g;
+}
+
+export function scPalm() {
+  const g = new THREE.Group();
+  const h = 1.5 + Math.random() * 0.9;
+  const lean = (Math.random() - 0.5) * 0.5;
+  // Segmented so the trunk can curve — a straight cylinder reads as a pole
+  const segs = 5;
+  for (let i = 0; i < segs; i++) {
+    const t = i / segs;
+    const seg = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11 - t * 0.04, 0.14 - t * 0.04, h / segs + 0.03, 8),
+      lambert(0x9a7145)
+    );
+    seg.position.set(lean * t * t * h * 0.5, (i + 0.5) * (h / segs), 0);
+    seg.rotation.z = -lean * t;
+    g.add(seg);
+  }
+  const topX = lean * h * 0.5;
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 4), canopyLambert(0x479a52));
+    frond.position.set(topX + Math.cos(a) * 0.4, h + 0.14, Math.sin(a) * 0.4);
+    frond.rotation.set(Math.cos(a) * 1.15, 0, Math.sin(a) * -1.15);
+    g.add(frond);
+  }
+  for (let i = 0; i < 3; i++) {
+    const nut = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), lambert(0x6b4a2c));
+    nut.position.set(topX + (Math.random() - 0.5) * 0.2, h - 0.06, (Math.random() - 0.5) * 0.2);
+    g.add(nut);
+  }
+  return g;
+}
+
+export function scDuneGrass() {
+  const g = new THREE.Group();
+  const blades = 6 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < blades; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.5 + Math.random() * 0.3, 4), lambert(0xb7c06a));
+    blade.position.set(Math.cos(a) * 0.1, 0.28, Math.sin(a) * 0.1);
+    blade.rotation.set(Math.cos(a) * 0.45, 0, Math.sin(a) * -0.45);
+    g.add(blade);
+  }
+  return g;
+}
+
+export function scBeachTowel() {
+  const g = new THREE.Group();
+  const colors = [[0xe4574c, 0xf7f2e6], [0x2fa8b8, 0xf0c64a], [0x7a4bd6, 0xf7f2e6]];
+  const pair = colors[Math.floor(Math.random() * colors.length)];
+  for (let i = 0; i < 5; i++) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.035, 0.17), lambert(pair[i % 2]));
+    stripe.position.set(0, 0.02, -0.34 + i * 0.17);
+    g.add(stripe);
+  }
+  g.rotation.y = Math.random() * Math.PI;
+  return g;
+}
+
+export function scSurfboard() {
+  const g = new THREE.Group();
+  const board = new THREE.Mesh(new THREE.CapsuleGeometry(0.19, 1.2, 4, 10), lambert(
+    [0xf0c64a, 0xe4574c, 0x2fa8b8][Math.floor(Math.random() * 3)]
+  ));
+  board.scale.z = 0.24;
+  board.position.y = 0.82;
+  board.rotation.z = 0.22;
+  g.add(board);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.3, 0.06), lambert(0xf7f2e6));
+  stripe.position.y = 0.82;
+  stripe.rotation.z = 0.22;
+  g.add(stripe);
+  g.rotation.y = Math.random() * Math.PI;
+  return g;
+}
+
+export function collectSeashell() {
+  const g = new THREE.Group();
+  const mat = glowMat(0xf7c9b8);
+  // Fanned ribs around a hinge — a plain sphere read as a pearl, which is
+  // already the deep's collectible.
+  for (let i = 0; i < 5; i++) {
+    const a = -0.6 + i * 0.3;
+    const rib = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), mat);
+    rib.scale.set(0.45, 0.75, 1);
+    rib.position.set(Math.sin(a) * 0.11, Math.cos(a) * 0.05, 0);
+    rib.rotation.z = -a;
+    g.add(rib);
+  }
+  const hinge = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), glowMat(0xe8a890));
+  hinge.position.y = -0.1;
+  g.add(hinge);
+  return makeCollectible(g, 0xffc9b0);
+}
+
+// ===================== MAIN STREET (common) =====================
+// The city outside the park. Kerbside furniture, so most of it is short,
+// hard-edged and municipal — the readability comes from colour, not shape.
+
+const STREET_GREY = 0x5c6570;
+
+export function obFireHydrant() {
+  const g = new THREE.Group();
+  const mat = lambert(0xd23b2f);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.1, 10), mat);
+  base.position.y = 0.05;
+  g.add(base);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.21, 0.62, 10), mat);
+  body.position.y = 0.4;
+  g.add(body);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.19, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+  cap.position.y = 0.71;
+  g.add(cap);
+  const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 6), lambert(0xf0c64a));
+  bolt.position.y = 0.84;
+  g.add(bolt);
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.09, 0.14, 8), mat);
+    arm.position.set(sx * 0.23, 0.5, 0);
+    arm.rotation.z = Math.PI / 2;
+    g.add(arm);
+  }
+  return g;
+}
+
+export function obMailbox() {
+  const g = new THREE.Group();
+  const blue = lambert(0x2f6fb8);
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.4, 0.09), lambert(STREET_GREY));
+  post.position.y = 0.2;
+  g.add(post);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.46), blue);
+  body.position.y = 0.62;
+  g.add(body);
+  const lid = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.31, 0.31, 0.46, 12, 1, false, 0, Math.PI), blue
+  );
+  lid.position.y = 0.83;
+  lid.rotation.x = Math.PI / 2;
+  g.add(lid);
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.04), lambert(0x1e2228));
+  slot.position.set(0, 0.72, 0.24);
+  g.add(slot);
+  return g;
+}
+
+export function obNewsBox() {
+  const g = new THREE.Group();
+  const shell = lambert(0xe07a2f);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.4), shell);
+  body.position.y = 0.55;
+  g.add(body);
+  const window_ = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.03), lambert(0xdfe6ee));
+  window_.position.set(0, 0.68, 0.21);
+  g.add(window_);
+  const paper = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.2, 0.02), lambert(0xf7f4ec));
+  paper.position.set(0, 0.68, 0.23);
+  g.add(paper);
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.26, 0.06), lambert(STREET_GREY));
+    leg.position.set(sx * 0.17, 0.13, 0);
+    g.add(leg);
+  }
+  return g;
+}
+
+export function obRoadBarrier() {
+  const g = new THREE.Group();
+  // Diagonal hazard stripes, built as alternating blocks along the rail
+  for (let i = 0; i < 6; i++) {
+    const block = new THREE.Mesh(
+      new THREE.BoxGeometry(0.15, 0.2, 0.1), lambert(i % 2 ? 0xe8622e : 0xf2ede0)
+    );
+    block.position.set(-0.375 + i * 0.15, 0.52, 0);
+    g.add(block);
+  }
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.06, 0.11), lambert(0xd8d2c4));
+  rail.position.y = 0.66;
+  g.add(rail);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.55, 0.07), lambert(0xd8d2c4));
+      leg.position.set(sx * 0.36, 0.27, sz * 0.14);
+      leg.rotation.x = sz * 0.24;
+      g.add(leg);
+    }
+  }
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), litMat(0xff9a2a, 0xff7a00, 1.1));
+  light.position.set(0, 0.74, 0);
+  g.add(light);
+  return g;
+}
+
+export function scBuilding() {
+  const g = new THREE.Group();
+  const h = 2.6 + Math.random() * 2.4;
+  const w = 1.4 + Math.random() * 0.8;
+  const tones = [0x8a7f74, 0x9c8a76, 0x74797f, 0xa08578];
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, 1.3), lambert(tones[Math.floor(Math.random() * tones.length)])
+  );
+  body.position.y = h / 2;
+  g.add(body);
+  // Lit windows. One shared emissive material, one mesh per pane — a texture
+  // would need an asset file and the whole game is built without them.
+  const lit = litMat(0xffe9a8, 0xffd97a, 0.85);
+  const dark = lambert(0x3a4048);
+  const cols = Math.max(2, Math.round(w / 0.42));
+  const rows = Math.floor(h / 0.55);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const pane = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 0.26, 0.04), Math.random() < 0.55 ? lit : dark
+      );
+      pane.position.set(
+        -w / 2 + (c + 0.5) * (w / cols), 0.45 + r * 0.55, 0.66
+      );
+      // Up to 24 panes per building and 40 buildings per stage — by far the
+      // biggest single source of outline shells in the game, and they lie flat
+      // on the facade where a line reads as grime rather than as an edge.
+      pane.userData.noOutline = true;
+      g.add(pane);
+    }
+  }
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.14, 0.16, 1.44), lambert(0x5f6670));
+  cap.position.y = h + 0.08;
+  g.add(cap);
+  return g;
+}
+
+export function scTrafficLight() {
+  const g = new THREE.Group();
+  const dark = lambert(0x2e343c);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.9, 8), dark);
+  post.position.y = 0.95;
+  g.add(post);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.07, 0.07), dark);
+  arm.position.set(0.32, 1.88, 0);
+  g.add(arm);
+  const housing = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.52, 0.18), dark);
+  housing.position.set(0.62, 1.66, 0);
+  g.add(housing);
+  const on = Math.floor(Math.random() * 3);
+  const bulbs = [[0xff4a3a, 0xff2a12], [0xffcc3a, 0xffb000], [0x4ade7a, 0x22c55e]];
+  for (let i = 0; i < 3; i++) {
+    const [c, e] = bulbs[i];
+    const bulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 8, 6),
+      i === on ? litMat(c, e, 1.3) : lambert(0x4a5058)
+    );
+    bulb.position.set(0.62, 1.82 - i * 0.16, 0.1);
+    g.add(bulb);
+  }
+  return g;
+}
+
+export function scParkedCar() {
+  const g = new THREE.Group();
+  const paints = [0xd23b2f, 0x2f6fb8, 0xf0c64a, 0xe8e2d4, 0x3f8f6a];
+  const paint = lambert(paints[Math.floor(Math.random() * paints.length)]);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.42, 0.78), paint);
+  body.position.y = 0.42;
+  g.add(body);
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.36, 0.7), paint);
+  cabin.position.set(-0.1, 0.79, 0);
+  g.add(cabin);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.24, 0.74), lambert(0x9fc4dc));
+  glass.position.set(-0.1, 0.8, 0);
+  g.add(glass);
+  const rubber = lambert(0x24272b);
+  for (const [x, z] of [[-0.55, 0.4], [0.55, 0.4], [-0.55, -0.4], [0.55, -0.4]]) {
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.14, 10), rubber);
+    wheel.position.set(x, 0.21, z);
+    wheel.rotation.x = Math.PI / 2;
+    g.add(wheel);
+  }
+  g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI;
+  return g;
+}
+
+export function collectDonut() {
+  const g = new THREE.Group();
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.1, 10, 20), glowMat(0xd9a15c));
+  g.add(ring);
+  const icing = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.105, 10, 20, Math.PI * 2), glowMat(0xf07ab0));
+  icing.scale.y = 0.55;
+  icing.position.y = 0.05;
+  g.add(icing);
+  // Sprinkles. Tiny, so they're skipped by the scenery outline pass but still
+  // read up close where a pickup is actually looked at.
+  const colors = [0xfff2a8, 0x7ae8d0, 0xffffff, 0xa88fe8];
+  for (let i = 0; i < 8; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.02, 0.02), glowMat(colors[i % colors.length])
+    );
+    s.position.set(Math.cos(a) * 0.2, 0.09, Math.sin(a) * 0.2);
+    s.rotation.y = Math.random() * Math.PI;
+    g.add(s);
+  }
+  g.rotation.x = Math.PI / 2.6;
+  return makeCollectible(g, 0xffb0d8);
+}
+
+// ===================== THE FARM (uncommon) =====================
+
+const BARN_RED = 0xa8382c;
+const STRAW = 0xd9b45c;
+
+export function obHayBale() {
+  const g = new THREE.Group();
+  const bale = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.8, 14), lambert(STRAW));
+  bale.position.y = 0.42;
+  bale.rotation.z = Math.PI / 2;
+  g.add(bale);
+  // Binding twine, so it doesn't read as a plain drum lying down
+  for (const x of [-0.24, 0.24]) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.025, 6, 14), lambert(0x8f6a2f));
+    band.position.set(x, 0.42, 0);
+    band.rotation.y = Math.PI / 2;
+    g.add(band);
+  }
+  const loose = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.26, 5), lambert(0xe8ca7c));
+  loose.position.set(0.1, 0.8, 0.18);
+  loose.rotation.set(0.5, 0, 0.4);
+  g.add(loose);
+  return g;
+}
+
+export function obTrough() {
+  const g = new THREE.Group();
+  const wood = lambert(0x8a6a44);
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.08, 0.44), wood);
+  floor.position.y = 0.26;
+  g.add(floor);
+  for (const sz of [-1, 1]) {
+    const side = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 0.07), wood);
+    side.position.set(0, 0.37, sz * 0.22);
+    g.add(side);
+  }
+  for (const sx of [-1, 1]) {
+    const end = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.3, 0.44), wood);
+    end.position.set(sx * 0.5, 0.37, 0);
+    g.add(end);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.26, 0.09), wood);
+    leg.position.set(sx * 0.4, 0.13, 0);
+    g.add(leg);
+  }
+  const water = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.02, 0.36), lambert(0x6fb8d8));
+  water.position.y = 0.44;
+  g.add(water);
+  return g;
+}
+
+export function obScarecrow() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.2, 8), lambert(0x7a5a38));
+  pole.position.y = 0.6;
+  g.add(pole);
+  const arms = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.08, 0.08), lambert(0x7a5a38));
+  arms.position.y = 0.92;
+  g.add(arms);
+  const shirt = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.5, 0.28), lambert(0x4a7ab0));
+  shirt.position.y = 0.85;
+  g.add(shirt);
+  // Straw bursting out of the cuffs and collar — the one detail that turns a
+  // cross with a shirt on it into a scarecrow.
+  for (const [x, y] of [[-0.44, 0.92], [0.44, 0.92], [0, 1.14]]) {
+    for (let i = 0; i < 4; i++) {
+      const s = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.18, 4), lambert(STRAW));
+      s.position.set(x + (Math.random() - 0.5) * 0.1, y, (Math.random() - 0.5) * 0.1);
+      s.rotation.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      g.add(s);
+    }
+  }
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), lambert(0xd9c48a));
+  head.position.y = 1.24;
+  g.add(head);
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.32, 0.04, 12), lambert(0xb08a4a));
+  brim.position.y = 1.38;
+  g.add(brim);
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.18, 12), lambert(0xb08a4a));
+  crown.position.y = 1.48;
+  g.add(crown);
+  const eyeMat = lambert(0x2b2323);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.02), eyeMat);
+    eye.position.set(sx * 0.07, 1.28, 0.17);
+    g.add(eye);
+  }
+  return g;
+}
+
+export function obMilkChurn() {
+  const g = new THREE.Group();
+  const metal = lambert(0xadb6bd);
+  for (const [x, z, s] of [[-0.2, 0.05, 1], [0.22, -0.06, 0.86]]) {
+    const churn = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.23, 0.5, 12), metal);
+    body.position.y = 0.25;
+    churn.add(body);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.19, 0.18, 12), metal);
+    neck.position.y = 0.59;
+    churn.add(neck);
+    const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.07, 12), lambert(0x8b949b));
+    lid.position.y = 0.71;
+    churn.add(lid);
+    churn.position.set(x, 0, z);
+    churn.scale.setScalar(s);
+    g.add(churn);
+  }
+  return g;
+}
+
+export function obWheelbarrow() {
+  const g = new THREE.Group();
+  const tray = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.3, 0.46), lambert(0x3f7f5f));
+  tray.position.set(0, 0.44, 0);
+  tray.rotation.x = 0.12;
+  g.add(tray);
+  const dirt = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.1, 0.4), lambert(0x6b4a2c));
+  dirt.position.set(0, 0.6, 0);
+  g.add(dirt);
+  const steel = lambert(0x8b949b);
+  for (const sx of [-1, 1]) {
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.0), steel);
+    handle.position.set(sx * 0.24, 0.42, 0.24);
+    handle.rotation.x = 0.16;
+    g.add(handle);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.28, 0.05), steel);
+    leg.position.set(sx * 0.24, 0.14, 0.5);
+    g.add(leg);
+  }
+  const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.1, 12), lambert(0x24272b));
+  wheel.position.set(0, 0.19, -0.42);
+  wheel.rotation.z = Math.PI / 2;
+  g.add(wheel);
+  return g;
+}
+
+export function scBarn() {
+  const g = new THREE.Group();
+  const red = lambert(BARN_RED);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.5, 1.8), red);
+  body.position.y = 0.75;
+  g.add(body);
+  // Gambrel roof: two pitches, which is the shape that says "barn"
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.5, 1.05), lambert(0x6f3b32));
+  lower.position.set(0, 1.72, 0);
+  g.add(lower);
+  const ridge = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 2.5, 3), lambert(0x6f3b32));
+  ridge.position.set(0, 2.2, 0);
+  ridge.rotation.z = Math.PI / 2;
+  g.add(ridge);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.0, 0.06), lambert(0x8f4a3c));
+  door.position.set(0, 0.5, 0.92);
+  g.add(door);
+  const trim = lambert(0xf2ede0);
+  for (const rot of [0.7, -0.7]) {
+    const brace = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.2, 0.03), trim);
+    brace.position.set(0, 0.5, 0.96);
+    brace.rotation.z = rot;
+    g.add(brace);
+  }
+  const loft = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.06), lambert(0x2e2823));
+  loft.position.set(0, 1.72, 0.55);
+  g.add(loft);
+  g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI;
+  return g;
+}
+
+export function scSilo() {
+  const g = new THREE.Group();
+  const h = 2.6 + Math.random() * 0.9;
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.62, h, 14), lambert(0xcfc7b4));
+  body.position.y = h / 2;
+  g.add(body);
+  // Corrugation: a few rings rather than a modelled ripple
+  for (let i = 1; i < 5; i++) {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.61, 0.03, 6, 16), lambert(0xb4ab98));
+    band.position.y = (h / 5) * i;
+    band.rotation.x = Math.PI / 2;
+    g.add(band);
+  }
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), lambert(0x8b949b));
+  cap.position.y = h;
+  g.add(cap);
+  return g;
+}
+
+export function scFarmFence() {
+  const g = new THREE.Group();
+  const white = lambert(0xeae4d4);
+  for (const x of [-0.9, 0, 0.9]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 0.1), white);
+    post.position.set(x, 0.35, 0);
+    g.add(post);
+  }
+  for (const y of [0.28, 0.56]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.09, 0.06), white);
+    rail.position.set(0, y, 0);
+    g.add(rail);
+  }
+  return g;
+}
+
+export function scChicken() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), lambert(0xf4efe2));
+  body.scale.set(1.2, 1, 0.9);
+  body.position.y = 0.2;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 7), lambert(0xf7f3e8));
+  head.position.set(0.16, 0.34, 0);
+  g.add(head);
+  const comb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.09), lambert(0xd23b2f));
+  comb.position.set(0.16, 0.42, 0);
+  g.add(comb);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.08, 5), lambert(0xf0a83a));
+  beak.position.set(0.24, 0.33, 0);
+  beak.rotation.z = -Math.PI / 2;
+  g.add(beak);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.18, 5), lambert(0xe6dfce));
+  tail.position.set(-0.19, 0.28, 0);
+  tail.rotation.z = 0.9;
+  g.add(tail);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  return g;
+}
+
+export function collectApple() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.23, 12, 10), glowMat(0xd6402f));
+  body.scale.y = 0.92;
+  g.add(body);
+  const dimple = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), glowMat(0xb8331f));
+  dimple.position.y = 0.2;
+  g.add(dimple);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.14, 6), lambert(0x6b4a2c));
+  stem.position.y = 0.27;
+  g.add(stem);
+  const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), lambert(0x4f9d3a));
+  leaf.scale.set(1, 0.3, 0.5);
+  leaf.position.set(0.09, 0.3, 0);
+  leaf.rotation.z = 0.4;
+  g.add(leaf);
+  return makeCollectible(g, 0xff6a52);
+}
+
+// ===================== SNOW DAY (uncommon) =====================
+// The one stage where the props are lighter than the ground is a real risk,
+// so every white here is broken up with a coloured accent (scarf, sled deck,
+// fence slats) and the ground is tinted a cold blue rather than left white.
+
+const SNOW_WHITE = 0xf2f6fa;
+const ICE_BLUE = 0xbcd9ea;
+
+export function obSnowman() {
+  const g = new THREE.Group();
+  const snow = lambert(SNOW_WHITE);
+  const sizes = [[0.34, 0.32], [0.25, 0.82], [0.18, 1.2]];
+  for (const [r, y] of sizes) {
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), snow);
+    ball.position.y = y;
+    g.add(ball);
+  }
+  const coal = lambert(0x24272b);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), coal);
+    eye.position.set(sx * 0.06, 1.25, 0.16);
+    g.add(eye);
+  }
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.19, 6), lambert(0xe8862e));
+  nose.position.set(0, 1.19, 0.2);
+  nose.rotation.x = Math.PI / 2;
+  g.add(nose);
+  for (let i = 0; i < 3; i++) {
+    const button = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 5), coal);
+    button.position.set(0, 0.7 + i * 0.12, 0.23 - i * 0.02);
+    g.add(button);
+  }
+  const scarf = new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.05, 6, 14), lambert(0xd23b2f));
+  scarf.position.y = 1.02;
+  scarf.rotation.x = Math.PI / 2;
+  g.add(scarf);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.32, 0.05), lambert(0xd23b2f));
+  tail.position.set(0.16, 0.88, 0.06);
+  tail.rotation.z = 0.3;
+  g.add(tail);
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.42, 6), lambert(0x6b4a2c));
+    arm.position.set(sx * 0.3, 0.88, 0);
+    arm.rotation.z = sx * 1.1;
+    g.add(arm);
+  }
+  return g;
+}
+
+export function obSled() {
+  const g = new THREE.Group();
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.07, 0.95), lambert(0xc0503a));
+  deck.position.y = 0.26;
+  g.add(deck);
+  for (let i = 0; i < 4; i++) {
+    const slat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.03, 0.16), lambert(0xa8412e));
+    slat.position.set(0, 0.31, -0.33 + i * 0.22);
+    g.add(slat);
+  }
+  const steel = lambert(0x9aa4ac);
+  for (const sx of [-1, 1]) {
+    const runner = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 1.0), steel);
+    runner.position.set(sx * 0.24, 0.05, 0);
+    g.add(runner);
+    const riser = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.05), steel);
+    riser.position.set(sx * 0.24, 0.15, 0.34);
+    g.add(riser);
+    // Curled nose — the runner sweeping up at the front
+    const curl = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.026, 6, 10, Math.PI / 1.6), steel);
+    curl.position.set(sx * 0.24, 0.17, -0.48);
+    curl.rotation.y = Math.PI / 2;
+    curl.rotation.z = -0.6;
+    g.add(curl);
+  }
+  const rope = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.02, 6, 12), lambert(0xd9b45c));
+  rope.position.set(0, 0.1, -0.6);
+  rope.rotation.x = Math.PI / 2.4;
+  g.add(rope);
+  return g;
+}
+
+export function obSnowdrift() {
+  const g = new THREE.Group();
+  const snow = lambert(SNOW_WHITE);
+  for (const [x, y, z, r] of [[0, 0.02, 0, 0.46], [0.38, -0.02, 0.06, 0.32], [-0.36, -0.02, -0.05, 0.34]]) {
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), snow);
+    hump.scale.y = 0.62;
+    hump.position.set(x, y + r * 0.35, z);
+    g.add(hump);
+  }
+  // Blue shadow pockets — pure white humps on a pale floor were invisible
+  const shade = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), lambert(ICE_BLUE));
+  shade.scale.set(1.5, 0.16, 1.1);
+  shade.position.y = 0.04;
+  g.add(shade);
+  return g;
+}
+
+export function obIceBlock() {
+  const g = new THREE.Group();
+  const ice = lambert(0x9fcde4);
+  const block = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.62, 0.56), ice);
+  block.position.y = 0.31;
+  block.rotation.y = 0.2;
+  g.add(block);
+  const shard = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 5), lambert(0xc4e4f2));
+  shard.position.set(0.14, 0.75, -0.05);
+  shard.rotation.z = 0.22;
+  g.add(shard);
+  const chip = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.3, 5), lambert(0xc4e4f2));
+  chip.position.set(-0.2, 0.68, 0.12);
+  chip.rotation.z = -0.35;
+  g.add(chip);
+  return g;
+}
+
+export function obLogPile() {
+  const g = new THREE.Group();
+  const bark = lambert(0x6b4a2c);
+  const cut = lambert(0xc39a63);
+  const rows = [[-0.24, 0.19], [0.24, 0.19], [0, 0.55]];
+  for (const [x, y] of rows) {
+    const log = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.8, 12), bark);
+    log.position.set(x, y, 0);
+    log.rotation.x = Math.PI / 2;
+    g.add(log);
+    for (const sz of [-1, 1]) {
+      const face = new THREE.Mesh(new THREE.CircleGeometry(0.185, 12), cut);
+      face.position.set(x, y, sz * 0.401);
+      face.rotation.y = sz > 0 ? 0 : Math.PI;
+      g.add(face);
+    }
+  }
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8), lambert(SNOW_WHITE));
+  cap.scale.set(1.3, 0.4, 1.5);
+  cap.position.y = 0.72;
+  g.add(cap);
+  return g;
+}
+
+export function scSnowPine() {
+  const g = new THREE.Group();
+  const h = 0.55 + Math.random() * 0.4;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, h, 10), lambert(0x4a3524));
+  trunk.position.y = h / 2;
+  g.add(trunk);
+  for (let i = 0; i < 3; i++) {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.66 - i * 0.15, 0.88, 12), canopyLambert(0x2f5f4a));
+    cone.position.y = h + 0.36 + i * 0.52;
+    g.add(cone);
+    // Snow load sitting on each tier
+    const snow = new THREE.Mesh(new THREE.ConeGeometry(0.68 - i * 0.15, 0.3, 12), lambert(SNOW_WHITE));
+    snow.position.y = h + 0.66 + i * 0.52;
+    g.add(snow);
+  }
+  g.scale.setScalar(0.85 + Math.random() * 0.7);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  return g;
+}
+
+export function scIgloo() {
+  const g = new THREE.Group();
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(0.85, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2), lambert(0xe6eef5)
+  );
+  g.add(dome);
+  // Block courses, so it isn't a bare igloo-shaped bubble
+  for (let ring = 0; ring < 3; ring++) {
+    const y = 0.14 + ring * 0.24;
+    const r = Math.sqrt(Math.max(0.02, 0.85 * 0.85 - y * y));
+    const n = 12 - ring * 2;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + ring * 0.3;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.2, 0.22), lambert(0xc9d8e4));
+      block.position.set(Math.cos(a) * r, y, Math.sin(a) * r);
+      block.rotation.y = -a;
+      block.userData.noOutline = true; // 30 per igloo; the dome's line is the one that reads
+      g.add(block);
+    }
+  }
+  const tunnel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3, 0.3, 0.5, 12, 1, false, 0, Math.PI), lambert(0xe6eef5)
+  );
+  tunnel.position.set(0, 0, 0.75);
+  tunnel.rotation.x = Math.PI / 2;
+  tunnel.rotation.y = Math.PI;
+  g.add(tunnel);
+  const mouth = new THREE.Mesh(new THREE.CircleGeometry(0.28, 12), lambert(0x3a4a58));
+  mouth.position.set(0, 0.14, 1.0);
+  g.add(mouth);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  return g;
+}
+
+export function scSnowRock() {
+  const g = new THREE.Group();
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.34 + Math.random() * 0.22, 0), lambert(0x77808a));
+  rock.position.y = 0.22;
+  rock.rotation.set(Math.random(), Math.random(), Math.random());
+  g.add(rock);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 7), lambert(SNOW_WHITE));
+  cap.scale.set(1.1, 0.45, 1.1);
+  cap.position.y = 0.46;
+  g.add(cap);
+  return g;
+}
+
+export function scSnowFence() {
+  const g = new THREE.Group();
+  const wood = lambert(0x9a6f45);
+  for (let i = 0; i < 9; i++) {
+    const slat = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.72, 0.04), wood);
+    slat.position.set(-0.8 + i * 0.2, 0.36, 0);
+    slat.rotation.z = (Math.random() - 0.5) * 0.1;
+    g.add(slat);
+  }
+  for (const y of [0.2, 0.58]) {
+    const wire = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.03, 0.03), lambert(0x5f6670));
+    wire.position.set(0, y, 0.03);
+    g.add(wire);
+  }
+  const drift = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 7), lambert(SNOW_WHITE));
+  drift.scale.set(1.9, 0.28, 0.7);
+  drift.position.set(0, 0.06, 0.2);
+  g.add(drift);
+  return g;
+}
+
+// ===================== THE GRAVEYARD (rare) =====================
+// Night stage. Everything is lit from below by the ground fog colour, so the
+// props run cool grey-green with one warm source (the pumpkins) to anchor it.
+
+const GRAVE_STONE = 0x8c8f97;
+
+export function obTombstone() {
+  const g = new THREE.Group();
+  const stone = lambert(GRAVE_STONE);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.14, 0.3), lambert(0x74777e));
+  base.position.y = 0.07;
+  g.add(base);
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.7, 0.16), stone);
+  slab.position.y = 0.48;
+  g.add(slab);
+  const arch = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.16, 12, 1, false, 0, Math.PI), stone);
+  arch.position.y = 0.83;
+  arch.rotation.x = Math.PI / 2;
+  g.add(arch);
+  // Engraving: a cross for half of them, a plain plate for the rest
+  if (Math.random() < 0.5) {
+    const v = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.03), lambert(0x6a6d74));
+    v.position.set(0, 0.6, 0.09);
+    g.add(v);
+    const h = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.03), lambert(0x6a6d74));
+    h.position.set(0, 0.7, 0.09);
+    g.add(h);
+  } else {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.34, 0.02), lambert(0x6a6d74));
+    plate.position.set(0, 0.56, 0.09);
+    g.add(plate);
+  }
+  g.rotation.z = (Math.random() - 0.5) * 0.16; // leaning, like they all do
+  return g;
+}
+
+export function obCoffin() {
+  const g = new THREE.Group();
+  const wood = lambert(0x5a3a2a);
+  // Tapered box: wide at the shoulders, narrow at the foot
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 1.05, 6), wood);
+  body.rotation.x = Math.PI / 2;
+  body.rotation.z = Math.PI / 6;
+  body.scale.set(1, 1, 0.6);
+  body.position.y = 0.3;
+  g.add(body);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.06, 0.62), lambert(0x6b4732));
+  lid.position.set(0.16, 0.62, -0.28);
+  lid.rotation.set(0.5, 0, 0.25);
+  g.add(lid);
+  // Something is climbing out of it
+  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.3, 0.09), lambert(0xd8d2c2));
+  hand.position.set(-0.06, 0.62, 0.2);
+  hand.rotation.z = -0.25;
+  g.add(hand);
+  const plaque = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.02, 0.18), lambert(0xc0a24a));
+  plaque.position.set(0, 0.58, 0.12);
+  g.add(plaque);
+  return g;
+}
+
+export function obPumpkin() {
+  const g = new THREE.Group();
+  // Lobed body: overlapping squashed spheres, not one ball
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8), litMat(0xe8802a, 0xc45a10, 0.35));
+    lobe.scale.set(0.72, 0.86, 0.72);
+    lobe.position.set(Math.cos(a) * 0.12, 0.28, Math.sin(a) * 0.12);
+    g.add(lobe);
+  }
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.2, 6), lambert(0x4f7a3a));
+  stem.position.y = 0.54;
+  stem.rotation.z = 0.2;
+  g.add(stem);
+  // Carved face — cut out as dark plates on the front, which reads at speed
+  // where actual boolean geometry would just be noise.
+  const cut = litMat(0xffd24a, 0xffb000, 1.4);
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.11, 3), cut);
+    eye.position.set(sx * 0.1, 0.33, 0.25);
+    eye.rotation.x = Math.PI / 2;
+    g.add(eye);
+  }
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.03), cut);
+  mouth.position.set(0, 0.18, 0.25);
+  g.add(mouth);
+  for (const sx of [-1, 1]) {
+    const fang = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.08, 3), cut);
+    fang.position.set(sx * 0.07, 0.23, 0.25);
+    fang.rotation.x = Math.PI / 2;
+    g.add(fang);
+  }
+  g.rotation.y = (Math.random() - 0.5) * 0.5;
+  return g;
+}
+
+export function scDeadTree() {
+  const g = new THREE.Group();
+  const bark = lambert(0x4a4238);
+  const h = 1.5 + Math.random() * 0.9;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.22, h, 8), bark);
+  trunk.position.y = h / 2;
+  g.add(trunk);
+  const limbs = 4 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < limbs; i++) {
+    const a = (i / limbs) * Math.PI * 2 + Math.random();
+    const len = 0.5 + Math.random() * 0.5;
+    const limb = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.07, len, 6), bark);
+    const y = h * (0.55 + Math.random() * 0.4);
+    limb.position.set(Math.cos(a) * len * 0.3, y, Math.sin(a) * len * 0.3);
+    limb.rotation.set(Math.cos(a) * 0.9, 0, Math.sin(a) * -0.9);
+    g.add(limb);
+    // Each limb forks once — a bare tree with straight branches reads as a mast
+    const twig = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.032, len * 0.55, 5), bark);
+    twig.position.set(Math.cos(a) * len * 0.62, y + len * 0.32, Math.sin(a) * len * 0.62);
+    twig.rotation.set(Math.cos(a) * 0.4, 0, Math.sin(a) * -0.4);
+    g.add(twig);
+  }
+  return g;
+}
+
+export function scIronFence() {
+  const g = new THREE.Group();
+  const iron = lambert(0x2e3238);
+  for (let i = 0; i < 10; i++) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.95, 6), iron);
+    bar.position.set(-0.9 + i * 0.2, 0.48, 0);
+    g.add(bar);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.16, 5), iron);
+    tip.position.set(-0.9 + i * 0.2, 1.03, 0);
+    g.add(tip);
+  }
+  for (const y of [0.22, 0.82]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.06, 0.06), iron);
+    rail.position.set(0, y, 0);
+    g.add(rail);
+  }
+  return g;
+}
+
+export function scCrypt() {
+  const g = new THREE.Group();
+  const stone = lambert(0x6e7178);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.3, 1.3), stone);
+  body.position.y = 0.65;
+  g.add(body);
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.95, 1.42, 3), lambert(0x585b62));
+  roof.position.y = 1.72;
+  roof.rotation.z = Math.PI / 2;
+  g.add(roof);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.85, 0.07), lambert(0x2e3238));
+  door.position.set(0, 0.43, 0.67);
+  g.add(door);
+  for (const sx of [-1, 1]) {
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 1.25, 10), lambert(0x81848b));
+    col.position.set(sx * 0.5, 0.63, 0.66);
+    g.add(col);
+  }
+  const urn = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 8), lambert(0x81848b));
+  urn.scale.y = 1.3;
+  urn.position.y = 2.16;
+  g.add(urn);
+  g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI;
+  return g;
+}
+
+export function scGhost() {
+  const g = new THREE.Group();
+  // Transparent on purpose: addOutline and the hitbox measurement both skip
+  // transparent meshes, so a ghost can never accidentally become solid.
+  const mat = new THREE.MeshLambertMaterial({
+    color: 0xdff2ff, emissive: 0x8fc4e8, emissiveIntensity: 0.7,
+    transparent: true, opacity: 0.42, flatShading: true,
+  });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 9), mat);
+  head.position.y = 1.4;
+  g.add(head);
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 10), mat);
+  body.position.y = 0.95;
+  g.add(body);
+  for (let i = 0; i < 3; i++) {
+    const tail = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), mat);
+    tail.position.set(-0.18 + i * 0.18, 0.56, 0);
+    g.add(tail);
+  }
+  const eyes = new THREE.MeshBasicMaterial({ color: 0x1a1f26, transparent: true, opacity: 0.7 });
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), eyes);
+    eye.position.set(sx * 0.11, 1.45, 0.26);
+    g.add(eye);
+  }
+  g.position.y = Math.random() * 0.4;
+  g.rotation.y = (Math.random() - 0.5) * 1.2;
+  return g;
+}
+
+export function collectCandyCorn() {
+  const g = new THREE.Group();
+  // Three bands, widest at the base — the whole identity of a candy corn
+  const bands = [[0.16, 0xf0a02a, -0.13], [0.115, 0xf5b942, 0], [0.06, 0xfaf3e2, 0.12]];
+  for (const [r, c, y] of bands) {
+    const seg = new THREE.Mesh(new THREE.ConeGeometry(r, 0.15, 8, 1, true), glowMat(c));
+    seg.position.y = y;
+    g.add(seg);
+  }
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 8), glowMat(0xfaf3e2));
+  tip.position.y = 0.2;
+  g.add(tip);
+  const foot = new THREE.Mesh(new THREE.CircleGeometry(0.16, 8), glowMat(0xf0a02a));
+  foot.rotation.x = Math.PI / 2;
+  foot.position.y = -0.2;
+  g.add(foot);
+  return makeCollectible(g, 0xffb84a);
+}
+
+// ===================== CANDY KINGDOM (epic) =====================
+// The loudest stage in the game, and deliberately so — epic worlds should be
+// unmistakable inside half a second. Saturated pinks and mints on a lilac
+// floor, with the same dark outline holding it all together so it stays
+// readable rather than turning into a sugar smear.
+
+const CANDY_PINK = 0xf07ab0;
+const CANDY_MINT = 0x6fe0c4;
+const CANDY_CREAM = 0xfff4e2;
+
+export function obGumdrop() {
+  const g = new THREE.Group();
+  const tint = [CANDY_PINK, 0x9a6fe8, 0xffd24a, CANDY_MINT][Math.floor(Math.random() * 4)];
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10, 0, Math.PI * 2, 0, Math.PI / 2), litMat(tint, tint, 0.3));
+  body.scale.y = 1.25;
+  g.add(body);
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, 0.1, 12), litMat(tint, tint, 0.3));
+  skirt.position.y = 0.05;
+  g.add(skirt);
+  // Sugar crust: a scatter of little cubes over the dome
+  const sugar = lambert(CANDY_CREAM);
+  for (let i = 0; i < 14; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const t = Math.random();
+    const grain = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), sugar);
+    grain.position.set(
+      Math.cos(a) * 0.4 * (1 - t * 0.7), 0.1 + t * 0.5, Math.sin(a) * 0.4 * (1 - t * 0.7)
+    );
+    grain.rotation.set(Math.random(), Math.random(), Math.random());
+    g.add(grain);
+  }
+  return g;
+}
+
+export function obCandyCane() {
+  const g = new THREE.Group();
+  const red = litMat(0xe8465a, 0xc02a3e, 0.3);
+  const white = litMat(CANDY_CREAM, 0xffe8d0, 0.3);
+  // Striped by alternating short segments up the shaft, then round the hook
+  for (let i = 0; i < 9; i++) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.11, 10), i % 2 ? red : white);
+    seg.position.y = 0.06 + i * 0.11;
+    g.add(seg);
+  }
+  // The hook. Radius has to be comfortably bigger than the shaft is thick or
+  // the arc closes up on itself and the whole cane reads as a striped pole
+  // with a lump on top — which is what 0.24 gave.
+  const hookR = 0.36;
+  for (let i = 0; i <= 9; i++) {
+    const a = (i / 9) * Math.PI;
+    const seg = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), i % 2 ? red : white);
+    seg.position.set(Math.sin(a) * hookR, 1.0 + hookR - Math.cos(a) * hookR, 0);
+    g.add(seg);
+  }
+  // The hook is built in the XY plane, so a free spin around Y can point it
+  // straight at the camera — where it collapses to a lump on top of a striped
+  // pole and the cane stops being a cane. Kept broadly side-on.
+  g.rotation.y = (Math.random() - 0.5) * 1.0;
+  return g;
+}
+
+export function obLollipop() {
+  const g = new THREE.Group();
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.6, 8), lambert(CANDY_CREAM));
+  stick.position.y = 0.3;
+  g.add(stick);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.09, 20), litMat(CANDY_CREAM, CANDY_CREAM, 0.25));
+  disc.position.y = 0.92;
+  disc.rotation.x = Math.PI / 2;
+  g.add(disc);
+  // The swirl: concentric part-rings, offset in angle so it spirals
+  const tint = [CANDY_PINK, 0x6fb8ff, CANDY_MINT][Math.floor(Math.random() * 3)];
+  for (let i = 0; i < 4; i++) {
+    const arc = new THREE.Mesh(
+      new THREE.TorusGeometry(0.09 + i * 0.09, 0.035, 6, 16, Math.PI * 1.45),
+      litMat(tint, tint, 0.35)
+    );
+    arc.position.set(0, 0.92, 0.05);
+    arc.rotation.z = i * 1.1;
+    g.add(arc);
+  }
+  return g;
+}
+
+export function obCupcake() {
+  const g = new THREE.Group();
+  const wrapper = litMat(0xe8628f, 0xc03a68, 0.25);
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.38, 14), wrapper);
+  cup.position.y = 0.19;
+  g.add(cup);
+  // Wrapper pleats
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2;
+    const pleat = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 0.05), lambert(CANDY_CREAM));
+    pleat.position.set(Math.cos(a) * 0.36, 0.19, Math.sin(a) * 0.36);
+    pleat.rotation.y = -a;
+    g.add(pleat);
+  }
+  const frosting = litMat(CANDY_MINT, CANDY_MINT, 0.3);
+  for (let i = 0; i < 3; i++) {
+    const swirl = new THREE.Mesh(new THREE.SphereGeometry(0.34 - i * 0.08, 12, 9), frosting);
+    swirl.scale.y = 0.7;
+    swirl.position.set(Math.sin(i * 2) * 0.05, 0.46 + i * 0.2, Math.cos(i * 2) * 0.05);
+    g.add(swirl);
+  }
+  const cherry = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), litMat(0xe8465a, 0xc02a3e, 0.5));
+  cherry.position.y = 1.0;
+  g.add(cherry);
+  const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.14, 5), lambert(0x4f7a3a));
+  stalk.position.y = 1.1;
+  stalk.rotation.z = 0.3;
+  g.add(stalk);
+  return g;
+}
+
+export function obChocFountain() {
+  const g = new THREE.Group();
+  const choc = litMat(0x7a4a2a, 0x5a3218, 0.3);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.5, 0.16, 14), lambert(0xc0a24a));
+  base.position.y = 0.08;
+  g.add(base);
+  const pool = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.06, 14), choc);
+  pool.position.y = 0.18;
+  g.add(pool);
+  const column = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8), lambert(0xc0a24a));
+  column.position.y = 0.6;
+  g.add(column);
+  // Three tiers with chocolate sheeting off each one
+  const tiers = [[0.36, 0.42], [0.27, 0.66], [0.18, 0.9]];
+  for (const [r, y] of tiers) {
+    const dish = new THREE.Mesh(new THREE.ConeGeometry(r, 0.14, 14), lambert(0xc0a24a));
+    dish.position.y = y;
+    g.add(dish);
+    const flow = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.95, r * 0.98, 0.2, 14, 1, true), choc);
+    flow.position.y = y - 0.12;
+    g.add(flow);
+  }
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), choc);
+  cap.position.y = 1.02;
+  g.add(cap);
+  return g;
+}
+
+export function scCandyTree() {
+  const g = new THREE.Group();
+  const h = 0.9 + Math.random() * 0.6;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, h, 9), lambert(0x4a2c3a));
+  trunk.position.y = h / 2;
+  g.add(trunk);
+  const tints = [CANDY_PINK, 0x9a6fe8, CANDY_MINT, 0xffd24a];
+  const tint = tints[Math.floor(Math.random() * tints.length)];
+  // Cotton-candy canopy: overlapping puffs rather than one ball, so the
+  // silhouette is fluffy instead of lollipop-round
+  for (const [x, y, z, r] of [[0, 0.62, 0, 0.62], [0.42, 0.4, 0.1, 0.4], [-0.4, 0.44, -0.08, 0.42], [0.1, 0.92, -0.12, 0.36]]) {
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 9), canopyLambert(tint));
+    puff.position.set(x, h + y, z);
+    g.add(puff);
+  }
+  g.scale.setScalar(0.85 + Math.random() * 0.6);
+  g.rotation.y = Math.random() * Math.PI * 2;
+  return g;
+}
+
+export function scPeppermintSwirl() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 8), lambert(CANDY_CREAM));
+  pole.position.y = 0.35;
+  g.add(pole);
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.13, 20), lambert(CANDY_CREAM));
+  disc.position.y = 1.05;
+  disc.rotation.x = Math.PI / 2;
+  g.add(disc);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.56, 0.15), lambert(0xe8465a));
+    spoke.position.set(Math.cos(a) * 0.3, 1.05 + Math.sin(a) * 0.3, 0);
+    spoke.rotation.z = a + Math.PI / 2;
+    g.add(spoke);
+  }
+  g.rotation.y = (Math.random() - 0.5) * 1.2;
+  return g;
+}
+
+export function scGummyHill() {
+  const g = new THREE.Group();
+  const tints = [0x6fe0c4, 0xf07ab0, 0xffb84a, 0x9a6fe8];
+  const tint = tints[Math.floor(Math.random() * tints.length)];
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(0.8 + Math.random() * 0.5, 14, 9, 0, Math.PI * 2, 0, Math.PI / 2),
+    litMat(tint, tint, 0.28)
+  );
+  dome.scale.y = 0.7;
+  g.add(dome);
+  // Gummy bears sitting on it
+  for (let i = 0; i < 3; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const bear = new THREE.Group();
+    const bod = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.1, 4, 8), litMat(0xffd24a, 0xffd24a, 0.4));
+    bod.position.y = 0.13;
+    bear.add(bod);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), litMat(0xffd24a, 0xffd24a, 0.4));
+    head.position.y = 0.28;
+    bear.add(head);
+    bear.position.set(Math.cos(a) * 0.4, 0.42, Math.sin(a) * 0.4);
+    g.add(bear);
+  }
+  return g;
+}
+
+export function scLicoriceFence() {
+  const g = new THREE.Group();
+  const black = lambert(0x2a2230);
+  const red = lambert(0xc0304a);
+  for (let i = 0; i < 7; i++) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8), i % 2 ? red : black);
+    post.position.set(-0.9 + i * 0.3, 0.45, 0);
+    g.add(post);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), i % 2 ? black : red);
+    knob.position.set(-0.9 + i * 0.3, 0.94, 0);
+    g.add(knob);
+  }
+  for (const y of [0.3, 0.66]) {
+    const rope = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.07, 0.07), y > 0.5 ? black : red);
+    rope.position.set(0, y, 0);
+    g.add(rope);
+  }
+  return g;
+}
+
 export function makeShip(tint = 0xd8dde6, accent = 0xe8622e) {
   const g = new THREE.Group();
   const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 0.5, 6, 14), lambert(tint));
@@ -2189,7 +3582,7 @@ export function makeShip(tint = 0xd8dde6, accent = 0xe8622e) {
   g.add(thruster);
   g.userData.thruster = thruster;
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return g;
+  return addOutline(g, { thickness: 0.02 });
 }
 
 // ===================== GATES (entering / leaving the house) =====================

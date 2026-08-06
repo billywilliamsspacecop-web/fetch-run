@@ -238,6 +238,12 @@ export class Spawner {
   }
 
   _add(group, lane, theta0, extra = {}) {
+    // Outline everything that spawns, from one place. Obstacles carry the
+    // heaviest line because they're what you must read at speed; pickups get
+    // a light one so it rims them without fighting their glow. Props that
+    // outline themselves (heaven) are skipped by addOutline's own guard.
+    const isPickup = extra.isBall || extra.isPower;
+    P.addOutline(group, { thickness: isPickup ? 0.018 : 0.04 });
     group.traverse((o) => {
       // Outline shells are a back-face trick sitting proud of the real mesh —
       // casting from them just fattens every shadow in the stage.

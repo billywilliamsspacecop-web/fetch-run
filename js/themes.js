@@ -95,10 +95,33 @@ export function calibrateHitboxes() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// RARITY. Every world sits in one of four tiers, and the tier decides both how
+// often it comes up and how long you stay in it. Before this there were only
+// two kinds of world — the ordered rotation and the "ultra-rare" drop-ins —
+// which left no room for a world that should be a treat without being a event,
+// and no room for one that should be rarer than the rares.
+//
+// `weight` is only compared WITHIN a group: common vs uncommon on an ordinary
+// roll, rare vs epic once the special roll has already come up (see
+// pickNextTheme). CONFIG.rareChance still owns how often that special roll
+// lands, so the existing slider means exactly what it always did.
+//
+// `stageScale` shrinks the world-length slider for the tier: an uncommon world
+// runs about two thirds as long as a common one, and rare/epic always last
+// exactly one stage so they stay a surprise rather than an endurance test.
+// ---------------------------------------------------------------------------
+export const RARITY = {
+  common: { label: 'COMMON', weight: 2, stageScale: 1, color: '#d6dde8' },
+  uncommon: { label: 'UNCOMMON', weight: 1, stageScale: 0.66, color: '#5fe08f' },
+  rare: { label: 'RARE', weight: 3, stageScale: 0, color: '#5fb8ff' },
+  epic: { label: 'EPIC', weight: 1, stageScale: 0, color: '#c07aff' },
+};
+
+export const isSpecial = (theme) => theme?.rarity === 'rare' || theme?.rarity === 'epic';
+
 // Each theme is a self-contained level look: sky + lighting, ground colors,
 // its own obstacle set, its own collectible, and its own scenery mix.
-// Stages advance through these in order, spending 2-4 stages in each
-// (see CONFIG.themeStagesMin/Max) so a world has time to land before it changes.
 //
 // hitbox: lat = lane units (1.0 == one full lane), ang = radians along travel.
 // The runner's own hitbox (CONFIG.dogHitbox) is added on top at collision time.
@@ -107,6 +130,7 @@ export const THEMES = [
   {
     id: 'backyard',
     label: 'BACKYARD',
+    rarity: 'common',
     outdoor: true,
     sky: 0xffd29e, fog: 0xffc78f, hemi: 1.05, sun: 1.6,
     planet: 0x7ec850, tuft: 0x5da23c, dash: 0xf7b8dd, // pastel pink on grass
@@ -127,6 +151,7 @@ export const THEMES = [
   {
     id: 'park',
     label: 'CITY PARK',
+    rarity: 'common',
     outdoor: true,
     sky: 0x9fd8f0, fog: 0xbfe4f5, hemi: 1.15, sun: 1.7,
     planet: 0x6fbf4a, tuft: 0x559a38, dash: 0xdcc0f7, // pastel lavender on grass
@@ -150,6 +175,7 @@ export const THEMES = [
   {
     id: 'forest',
     label: 'DEEP WOODS',
+    rarity: 'uncommon',
     outdoor: true,
     sky: 0x6f9b7e, fog: 0x4f7a63, hemi: 0.85, sun: 1.15,
     planet: 0x44702f, tuft: 0x335225, dash: 0xffd9a0, // pastel peach on deep green
@@ -172,6 +198,7 @@ export const THEMES = [
   {
     id: 'tennis',
     label: 'CENTER COURT',
+    rarity: 'uncommon',
     outdoor: true,
     sky: 0x5fb8e8, fog: 0x8fd0f0, hemi: 1.1, sun: 1.75,
     planet: 0x3d7f70, tuft: 0x336a5e, dash: 0xffc4a8, // pastel coral on teal court
@@ -199,6 +226,7 @@ export const THEMES = [
   {
     id: 'house',
     label: 'INSIDE THE HOUSE',
+    rarity: 'uncommon',
     outdoor: false, // no clouds, no sun disc — we're indoors
     sky: 0xe4d3ba, fog: 0xd6c1a4, hemi: 1.0, sun: 1.15,
     planet: 0xb08a5a, tuft: 0x9a7448, dash: 0xa8d8f5, // pastel blue on wood
@@ -229,6 +257,113 @@ export const THEMES = [
       { make: P.scHousePlant, count: 20, near: 0.02, far: 0.35 },
     ],
   },
+  {
+    id: 'beach',
+    label: 'BEACH DAY',
+    rarity: 'common',
+    outdoor: true,
+    sky: 0x7fd0ea, fog: 0xbfe8f0, hemi: 1.25, sun: 1.9,
+    // Sand is the lightest outdoor ground in the game, so the tufts go a shade
+    // DARKER than the floor rather than lighter — dune grass on pale sand is a
+    // dark speckle, and a lighter one disappeared into the beach entirely.
+    planet: 0xe4cf9a, tuft: 0xbfa46e, dash: 0x4fb8d8, // sea blue on sand
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectSeashell,
+    obstacles: [
+      { make: P.obSandcastle },
+      { make: P.obBeachUmbrella },
+      { make: P.obCooler },
+      { make: P.obDeckChair },
+      { make: P.obLifeguardStand },
+    ],
+    scenery: [
+      { make: P.scPalm, count: 44, near: 0.03, far: 0.5 },
+      { make: P.scDuneGrass, count: 70, near: 0, far: 0.5 },
+      { make: P.scBeachTowel, count: 26, near: 0.01, far: 0.35 },
+      { make: P.scSurfboard, count: 20, near: 0.04, far: 0.42 },
+    ],
+  },
+  {
+    id: 'street',
+    label: 'MAIN STREET',
+    rarity: 'common',
+    outdoor: true,
+    sky: 0xb9c9d8, fog: 0xc9d4de, hemi: 1.1, sun: 1.5,
+    planet: 0x6e737a, tuft: 0x5c6068, dash: 0xf5e26a, // road paint on asphalt
+    tufts: false, // nothing grows out of a road
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectDonut,
+    obstacles: [
+      { make: P.obFireHydrant },
+      { make: P.obMailbox },
+      { make: P.obNewsBox },
+      { make: P.obRoadBarrier },
+      // Recycled from the park — a hot dog cart and a bin belong on a kerb at
+      // least as much as they do on a path, and reusing them means the street
+      // fills out without five more props to read at speed.
+      { make: P.obTrashCan },
+      { make: P.obHotDogCart },
+    ],
+    scenery: [
+      { make: P.scBuilding, count: 40, near: 0.08, far: 0.45 },
+      { make: P.scParkedCar, count: 26, near: 0.02, far: 0.16 },
+      { make: P.scTrafficLight, count: 14, near: 0.03, far: 0.3 },
+      { make: P.scLampPost, count: 18, near: 0.02, far: 0.26 },
+    ],
+  },
+  {
+    id: 'farm',
+    label: 'THE FARM',
+    rarity: 'uncommon',
+    outdoor: true,
+    sky: 0xf0d9a8, fog: 0xe8cea0, hemi: 1.1, sun: 1.7,
+    planet: 0x9aa84e, tuft: 0x7d8a3a, dash: 0xe8f0c8, // pale straw on a hay field
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectApple,
+    obstacles: [
+      { make: P.obHayBale },
+      { make: P.obTrough },
+      { make: P.obScarecrow },
+      { make: P.obMilkChurn },
+      { make: P.obWheelbarrow },
+      { make: P.obStump }, // recycled: a stump is a stump
+    ],
+    scenery: [
+      { make: P.scBarn, count: 14, near: 0.1, far: 0.45 },
+      { make: P.scSilo, count: 12, near: 0.12, far: 0.45 },
+      { make: P.scFarmFence, count: 46, near: 0.01, far: 0.06 },
+      { make: P.scChicken, count: 34, near: 0.02, far: 0.3 },
+      { make: P.scTree, count: 24, near: 0.05, far: 0.5 },
+    ],
+  },
+  {
+    id: 'snow',
+    label: 'SNOW DAY',
+    rarity: 'uncommon',
+    outdoor: true,
+    // Everything here fights the same problem heaven has: white props on a
+    // white floor. The ground is pulled well off pure white into cold blue,
+    // the props all carry a coloured accent, and the lane fraction is raised
+    // so they arrive chunky enough to read.
+    sky: 0xcfe2f0, fog: 0xdcebf5, hemi: 1.4, sun: 1.75,
+    planet: 0xdce9f2, tuft: 0xc4d8e6, dash: 0x4a6a86, // dark slate on snow
+    minLaneFraction: 0.72,
+    canopyTint: 0x9fc4dc, canopyMix: 0.3,
+    collectible: P.collectTennisBall,
+    obstacles: [
+      { make: P.obSnowman },
+      { make: P.obSled },
+      { make: P.obSnowdrift },
+      { make: P.obIceBlock },
+      { make: P.obLogPile },
+    ],
+    scenery: [
+      { make: P.scSnowPine, count: 70, near: 0.015, far: 0.55 },
+      { make: P.scSnowFence, count: 30, near: 0.01, far: 0.1 },
+      { make: P.scSnowRock, count: 34, near: 0.02, far: 0.5 },
+      { make: P.scIgloo, count: 12, near: 0.08, far: 0.4 },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -241,7 +376,7 @@ export const RARE_THEMES = [
   {
     id: 'heaven',
     label: 'THE GOOD PLACE',
-    rare: true,
+    rarity: 'rare',
     outdoor: true,
     sky: 0xdfeeff, fog: 0xeef6ff, hemi: 1.55, sun: 1.95,
     // Ground pulled off pure white: at 0xf4f7ff the pale marble/cloud props
@@ -274,7 +409,7 @@ export const RARE_THEMES = [
   {
     id: 'hell',
     label: 'THE BAD PLACE',
-    rare: true,
+    rarity: 'rare',
     outdoor: false,
     // Brightened a second time. The mood survives a lighter floor — what it
     // doesn't survive is not being able to read a lava rock against it.
@@ -300,7 +435,7 @@ export const RARE_THEMES = [
   {
     id: 'underwater',
     label: 'THE DEEP',
-    rare: true,
+    rarity: 'rare',
     outdoor: false,   // no clouds, no sun disc — you're under the surface
     caustics: true,   // rippling light on the seabed + drifting bubbles
     sky: 0x1b6f8f, fog: 0x2b87a6, hemi: 1.25, sun: 1.5,
@@ -326,7 +461,7 @@ export const RARE_THEMES = [
   {
     id: 'space',
     label: 'DEEP SPACE',
-    rare: true,
+    rarity: 'epic',
     outdoor: false, // no clouds or sun disc — the starfield backdrop instead
     starfield: true,// real stars and galaxies in the sky, not on the ground
     ships: true,    // runner + quarry fly little spaceships here
@@ -353,19 +488,107 @@ export const RARE_THEMES = [
       { make: P.scSpacePlanet, count: 12, near: 0.22, far: 0.55 },
     ],
   },
+  {
+    id: 'graveyard',
+    label: 'THE GRAVEYARD',
+    rarity: 'rare',
+    outdoor: true,
+    // Night, but never dark enough to hide a tombstone. Same lesson space
+    // taught: the SKY can be black, the track can't be.
+    sky: 0x1c2233, fog: 0x2b3448, hemi: 1.05, sun: 1.35,
+    fogNear: 26, fogFar: 62, // low ground mist rolling in
+    planet: 0x4a5340, tuft: 0x3a4232, dash: 0xf0a83a, // lantern amber on dead grass
+    minLaneFraction: 0.7,
+    canopyTint: 0x2e3a3f, canopyMix: 0.45,
+    collectible: P.collectCandyCorn,
+    obstacles: [
+      { make: P.obTombstone },
+      { make: P.obCoffin },
+      { make: P.obPumpkin },
+      // Recycled out of hell — a cauldron and a heap of skulls are as at home
+      // in a graveyard as they are underground, and they already read at speed.
+      { make: P.obCauldron },
+      { make: P.obSkullPile },
+    ],
+    scenery: [
+      { make: P.scDeadTree, count: 56, near: 0.02, far: 0.55 },
+      { make: P.scIronFence, count: 36, near: 0.01, far: 0.08 },
+      { make: P.scCrypt, count: 14, near: 0.1, far: 0.42 },
+      { make: P.scGhost, count: 18, near: 0.04, far: 0.4 },
+    ],
+  },
+  {
+    id: 'candy',
+    label: 'CANDY KINGDOM',
+    rarity: 'epic',
+    outdoor: true,
+    sky: 0xffd6ec, fog: 0xffe4f2, hemi: 1.4, sun: 1.85,
+    planet: 0xb98fd8, tuft: 0xd8a8ea, dash: 0xfff4a8, // butterscotch on lilac
+    minLaneFraction: 0.74,
+    canopyTint: null, canopyMix: 0,
+    collectible: P.collectDonut,
+    obstacles: [
+      { make: P.obGumdrop },
+      { make: P.obCandyCane },
+      { make: P.obLollipop },
+      { make: P.obCupcake },
+      { make: P.obChocFountain },
+    ],
+    scenery: [
+      { make: P.scCandyTree, count: 58, near: 0.02, far: 0.5 },
+      { make: P.scPeppermintSwirl, count: 30, near: 0.03, far: 0.42 },
+      { make: P.scGummyHill, count: 26, near: 0.05, far: 0.5 },
+      { make: P.scLicoriceFence, count: 30, near: 0.01, far: 0.08 },
+    ],
+  },
 ];
 
 // Everything that needs hitbox calibration and prebuilt scenery groups
 export const ALL_THEMES = [...THEMES, ...RARE_THEMES];
 
-// Never serve the same rare stage twice running — with only a handful of
-// them, pure random meant you could hit hell repeatedly and go a very long
-// time without ever seeing heaven or space.
-let lastRareId = null;
-export function pickRareTheme() {
-  const pool = RARE_THEMES.filter((t) => t.id !== lastRareId);
-  const pick = pool[Math.floor(Math.random() * pool.length)];
-  lastRareId = pick.id;
+// `rare` is what the rest of the game already asks about — the special banner,
+// the special sting, the one-stage rule, the stats screen's "worlds found"
+// count. It's now DERIVED from the tier rather than hand-set per theme, so a
+// world can never be listed as epic and behave as ordinary.
+for (const t of ALL_THEMES) t.rare = isSpecial(t);
+
+export const themesByRarity = (rarity) => ALL_THEMES.filter((t) => t.rarity === rarity);
+
+// How many worlds back to remember. Long enough that a five-world tier doesn't
+// serve you the same beach three times in a run of eight, short enough that it
+// can't paint itself into a corner where every candidate is excluded.
+const RECENT_MEMORY = 3;
+let recent = [];
+
+export function resetThemeHistory() {
+  recent = [];
+}
+
+// One weighted pick inside a group of tiers (see RARITY.weight).
+function pickTier(tiers) {
+  const total = tiers.reduce((a, t) => a + RARITY[t].weight, 0);
+  let roll = Math.random() * total;
+  for (const t of tiers) {
+    roll -= RARITY[t].weight;
+    if (roll <= 0) return t;
+  }
+  return tiers[0];
+}
+
+// The next world after `current`. Two rolls, in order:
+//   1. is this a SPECIAL world? — CONFIG.rareChance, and never twice running,
+//      so a rare stage always hands you back to the ordinary rotation
+//   2. which tier inside that group, then which world inside that tier,
+//      skipping anything served in the last few worlds
+export function pickNextTheme(current) {
+  const special = !isSpecial(current) && Math.random() < CONFIG.rareChance;
+  const tier = pickTier(special ? ['rare', 'epic'] : ['common', 'uncommon']);
+  let pool = themesByRarity(tier).filter((t) => t.id !== current?.id);
+  const fresh = pool.filter((t) => !recent.includes(t.id));
+  if (fresh.length) pool = fresh;
+  const pick = pool[Math.floor(Math.random() * pool.length)] ?? THEMES[0];
+  recent.push(pick.id);
+  if (recent.length > RECENT_MEMORY) recent.shift();
   return pick;
 }
 

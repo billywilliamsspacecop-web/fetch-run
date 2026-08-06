@@ -24,13 +24,30 @@ export class FX {
     return this._mats.get(color);
   }
 
+  // Particles get the same inverted-hull line every prop carries, so the trail
+  // behind the paws reads as part of the same drawing rather than a spray of
+  // untraced blobs. Two departures from props.js addOutline:
+  //   * the shell is scaled RELATIVELY, not to a constant world thickness —
+  //     a particle shrinks over its life and the line should shrink with it
+  //   * its material is per-particle and transparent, because the shell has to
+  //     fade out in step with what it's outlining. An opaque line around a
+  //     particle that has faded to nothing is just a floating dark husk.
+  _shell(mesh, thickness) {
+    const s = new THREE.Mesh(mesh.geometry, new THREE.MeshBasicMaterial({
+      color: 0x21203a, side: THREE.BackSide, transparent: true,
+    }));
+    s.scale.setScalar(1 + thickness);
+    mesh.add(s);
+    return s;
+  }
+
   // `colors` (a list) wins over `color`: each particle picks its own, which is
   // what turns a single-tone puff into a trail that shimmers.
   // `drift` pushes particles backward down the track (+z is behind the
   // runner), stretching an emission into a streak instead of a pile.
   _spawn(pos, {
     color, colors = null, count, speed, up, life, size, geo = this.geo,
-    vel = null, gravity = 4.5, spin = 0, drift = 0, alpha = 1,
+    vel = null, gravity = 4.5, spin = 0, drift = 0, alpha = 1, outline = 0,
   }) {
     for (let i = 0; i < count; i++) {
       const tint = colors ? colors[Math.floor(Math.random() * colors.length)] : color;
@@ -51,6 +68,7 @@ export class FX {
       if (drift) v.z += drift * (0.55 + Math.random() * 0.9);
       this.active.push({
         mesh, vel: v,
+        shell: outline ? this._shell(mesh, outline) : null,
         life: 0,
         maxLife: life * (0.7 + Math.random() * 0.6),
         baseScale: s,
@@ -72,7 +90,11 @@ export class FX {
   // backward for length. The streak is what you actually see at speed — the
   // particles are only the texture inside it.
   dust(pos, look = TRAILS.dust) {
-    this._spawn(pos, look);
+    // Thin. The dust spheres are 6-segment and only a few centimetres across,
+    // so a prop-weight line (0.3 = 30% bigger) turned each one into a dark
+    // hexagon ring and the trail read as a chain of debug wireframes. At 0.12
+    // it rims them and lets the tint through.
+    this._spawn(pos, { ...look, outline: look.outline ?? 0.12 });
     if (look.streak) {
       // Every other tick, not every one. At every tick the bars overlap into a
       // solid slab and the individual particles stop being visible inside it.
@@ -87,7 +109,7 @@ export class FX {
             // Half-transparent from birth. At full opacity the pair stopped
             // being a plume and became two solid rails painted on the grass,
             // and the particles inside them disappeared.
-            alpha: 0.5,
+            alpha: 0.5, outline: 0.18,
             geo: this.trailGeo, gravity: 0,
             vel: new THREE.Vector3(side * (0.3 + Math.random() * 0.55), 0.3, 8.5),
           });
@@ -137,7 +159,7 @@ export class FX {
   plankBurst(pos) {
     this._spawn(pos, {
       color: 0x9c6b3f, count: 12, speed: 3.4, up: 3.6, life: 1.0, size: 1,
-      geo: this.plankGeo, spin: 8,
+      geo: this.plankGeo, spin: 8, outline: 0.22,
     });
     this._spawn(pos, { color: 0xcbb890, count: 10, speed: 2.4, up: 2.4, life: 0.6, size: 1 });
   }
@@ -147,7 +169,7 @@ export class FX {
   glassBurst(pos) {
     this._spawn(pos, {
       color: 0xbfe6f2, count: 14, speed: 4.2, up: 3.2, life: 0.9, size: 1,
-      geo: this.shardGeo, spin: 12, gravity: 7,
+      geo: this.shardGeo, spin: 12, gravity: 7, outline: 0.16,
     });
     this._spawn(pos, { color: 0xffffff, count: 10, speed: 2.8, up: 2.6, life: 0.45, size: 0.7 });
   }
@@ -170,6 +192,7 @@ export class FX {
       const t = p.life / p.maxLife;
       p.mesh.scale.setScalar(p.baseScale * (1 - t * 0.6));
       p.mesh.material.opacity = (1 - t * t) * p.alpha;
+      if (p.shell) p.shell.material.opacity = p.mesh.material.opacity;
     }
   }
 }

@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { CONFIG } from './config.js';
 import { laneAlpha, surfacePivot } from './world.js';
 import { Spawner } from './obstacles.js';
-import { THEMES, RARE_THEMES, pickRareTheme } from './themes.js';
+import { THEMES, RARE_THEMES, RARITY, pickNextTheme, resetThemeHistory } from './themes.js';
 import { makeFence } from './fence.js';
 
 const _v = new Vector3();
@@ -17,6 +17,13 @@ const _v = new Vector3();
 // entity covers ~0.2rad per frame, so it would step clean over the window and
 // obstacles would pass straight THROUGH the runner without registering.
 const swept = (prev, cur, halfWidth) => prev <= halfWidth && cur >= -halfWidth;
+
+// How far ahead the quarry starts reading a door gate, in radians. Ordinary
+// props are scanned at 0.35 — plenty for a dodge — but a gate has to be picked
+// once and committed to, and at top speed 0.35rad is under two tenths of a
+// second. This is most of the way back to the spawn distance, so the squirrel
+// lines up on its doorway while the wall is still on the horizon.
+const SQ_GATE_LOOKAHEAD = 0.95;
 
 // Game states: 'menu' -> 'intro' -> 'running' -> 'dead' -> ...
 // The intro is the chase short: squirrel bolts, runner follows, fence smashes.
@@ -55,8 +62,15 @@ export class Game {
     return CONFIG.rareOnly ? CONFIG.rareTestStageLength : CONFIG.stageLength;
   }
 
-  _rollThemeStages() {
-    const { themeStagesMin: a, themeStagesMax: b } = CONFIG;
+  // How many stages a world holds for. The world-length slider sets the
+  // ceiling for a COMMON world; rarer tiers scale it down (see RARITY), and
+  // rare/epic collapse to a single stage so they stay an event.
+  _rollThemeStages(theme = this.theme) {
+    if (this.rareTest) return 1;
+    const scale = RARITY[theme?.rarity]?.stageScale ?? 1;
+    if (scale === 0) return 1;
+    const b = Math.max(1, Math.round(CONFIG.themeStagesMax * scale));
+    const a = Math.min(CONFIG.themeStagesMin, b);
     return a + Math.floor(Math.random() * (b - a + 1));
   }
 
@@ -72,6 +86,9 @@ export class Game {
     this.mult = 1;
     this.speed = CONFIG.baseSpeed;
     this.stage = 1;
+    // Per-run telemetry, harvested by UI.recordRun into the lifetime stats
+    this.topSpeed = 0;      // rad/s, converted to mph for display
+    this.themesSeen = [];   // every world this run passed through, in order
     this.lane = 2;
     this.targetLane = 2;
     // Put the runner back in the CENTRE VISUALLY too. Only _updateRun writes
@@ -94,10 +111,14 @@ export class Game {
     // Themed levels: start in the first theme, move on after 2-4 stages
     this.themeIndex = 0;
     this.rareIndex = 0;
+    resetThemeHistory(); // every run gets the full spread of worlds again
     this.theme = this.rareTest ? RARE_THEMES[0] : THEMES[0];
+    // The starting world never goes through _enterTheme, so log it here or
+    // the backyard would be the one world the stats never saw.
+    this.themesSeen = [this.theme.id];
     this.pendingTheme = null; // world waiting behind a door gate
     this.onThemeChange?.(this.theme);
-    this.stagesLeftInTheme = this.rareTest ? 1 : this._rollThemeStages();
+    this.stagesLeftInTheme = this._rollThemeStages();
     this.spawner.setTheme(this.theme);
     // Squirrel chase state
     this.sqLane = 2;
@@ -288,11 +309,9 @@ export class Game {
           // Test run: straight through the specials on a loop, no gates.
           this.rareIndex = (this.rareIndex + 1) % RARE_THEMES.length;
           next = RARE_THEMES[this.rareIndex];
-        } else if (!this.theme.rare && Math.random() < CONFIG.rareChance) {
-          next = pickRareTheme();
         } else {
-          this.themeIndex = (this.themeIndex + 1) % THEMES.length;
-          next = THEMES[this.themeIndex];
+          // Weighted by rarity tier — see pickNextTheme in themes.js.
+          next = pickNextTheme(this.theme);
         }
         if (next.gate) {
           // A gated world is entered by breaking INTO it, so the door has to
@@ -332,6 +351,9 @@ export class Game {
     // Golden Bone's 2x comes with a nudge of real speed, so the multiplier is
     // something you feel rather than just a number in the corner.
     if (this.has('goldbone')) this.speed *= CONFIG.powerups.goldboneSpeedBump;
+    // Recorded after the powerup modifiers, so a Golden Bone sprint counts
+    // toward your fastest-ever — it's speed you actually travelled at.
+    this.topSpeed = Math.max(this.topSpeed, this.speed);
 
     // Powerup timers — each stacked power counts down independently
     for (const type of Object.keys(this.powers)) {
@@ -511,10 +533,11 @@ export class Game {
   // Commit to a world: swap props, colors and scenery, and announce it.
   _enterTheme(theme) {
     this.theme = theme;
-    this.stagesLeftInTheme = theme.rare || this.rareTest ? 1 : this._rollThemeStages();
+    this.themesSeen?.push(theme.id);
+    this.stagesLeftInTheme = this._rollThemeStages(theme);
     this.spawner.setTheme(theme);
     this.onThemeChange?.(theme);
-    this.ui.showStageBanner(this.stage, theme.label, theme.rare);
+    this.ui.showStageBanner(this.stage, theme.label, theme.rarity);
     if (theme.rare) this.sfx?.rareStage(); else this.sfx?.newTheme();
   }
 
@@ -567,12 +590,45 @@ export class Game {
 
   _updateSquirrel(dt) {
     const sqT = CONFIG.squirrelTheta;
+
+    // DOOR GATES ARE NOT AN OBSTACLE FIELD. A wall across the track with one
+    // gap in it has exactly one right answer, and the generic threat scan
+    // below could not find it for two reasons: it counted the doorway itself
+    // as a threat (a doorway is an entity like any other, it just carries no
+    // hitbox), and even discounting that, every lane scored danger, so the
+    // "pick the safest" tie-break resolved to a coin flip among five panels.
+    // The quarry ran into the front of the house about four times in five.
+    //
+    // So gates get their own pass, ahead of everything else: scanned further
+    // out than ordinary props — the whole wall arrives at once and there is no
+    // dodging it late — and once a doorway is chosen the lane is HELD until
+    // the wall is behind it. No dodging, no idle wander; the only thing that
+    // matters between here and the threshold is being lined up on the gap.
+    let door = null;
+    for (const e of this.spawner.entities) {
+      if (!e.isDoor) continue;
+      const cur = this.spin + e.theta0 - sqT;
+      if (cur < -SQ_GATE_LOOKAHEAD || cur > 0.02) continue;
+      // Nearest gap wins, so it doesn't cut across the whole track for a
+      // doorway no better than the one beside it.
+      if (door === null || Math.abs(e.lane - this.sqLane) < Math.abs(door - this.sqLane)) {
+        door = e.lane;
+      }
+    }
+    if (door !== null) {
+      this.sqTargetLane = door;
+      this._tweenSquirrel(dt);
+      return;
+    }
+
     // Threat scan: anything about to cross the squirrel's line
     const danger = new Array(CONFIG.lanes).fill(0);
     for (const e of this.spawner.entities) {
       const cur = this.spin + e.theta0 - sqT;
       if (cur < -0.35 || cur > 0.04) continue;
-      if (!e.isBall && !e.isPower) danger[e.lane] += cur > -0.12 ? 10 : 3;
+      // Doors are gaps, not props — counting one as a threat is what used to
+      // push the quarry OUT of the only lane it could survive.
+      if (!e.isBall && !e.isPower && !e.isDoor) danger[e.lane] += cur > -0.12 ? 10 : 3;
     }
     if (danger[this.sqTargetLane] > 0) {
       // Pick among the SAFEST lanes, preferring the nearest, breaking any
@@ -596,10 +652,14 @@ export class Game {
       else if (this.sqTargetLane >= CONFIG.lanes - 1) dir = -1;
       this.sqTargetLane += dir;
     }
+    this._tweenSquirrel(dt);
+  }
+
+  _tweenSquirrel(dt) {
     const diff = this.sqTargetLane - this.sqLane;
     const k = 1 - Math.exp(-dt / (CONFIG.laneChangeTime * 0.7));
     this.sqLane += Math.abs(diff) < 0.001 ? diff : diff * k;
-    this.squirrelPivot.rotation.x = sqT;
+    this.squirrelPivot.rotation.x = CONFIG.squirrelTheta;
     this.squirrelPivot.rotation.z = laneAlpha(this.sqLane);
   }
 
@@ -630,6 +690,20 @@ export class Game {
     obAnchor: 'flatten', obTreasureChest: 'trip', obSeaUrchin: 'bounce',
     obGiantClam: 'bounce', obCoral: 'spinout', obJellyfish: 'tangle',
     obDoorPanel: 'flatten',
+    // Beach / street / farm / snow / graveyard / candy. Same rule as above:
+    // soft and springy bounces you, low and rigid trips you, tall and solid
+    // flattens you, anything you'd get caught IN tangles you.
+    obSandcastle: 'bounce', obCooler: 'trip', obDeckChair: 'tangle',
+    obBeachUmbrella: 'spinout', obLifeguardStand: 'flatten',
+    obFireHydrant: 'flatten', obMailbox: 'flatten', obNewsBox: 'trip',
+    obRoadBarrier: 'tangle',
+    obHayBale: 'bounce', obTrough: 'trip', obScarecrow: 'tangle',
+    obMilkChurn: 'spinout', obWheelbarrow: 'spinout',
+    obSnowman: 'bounce', obSnowdrift: 'bounce', obSled: 'trip',
+    obLogPile: 'trip', obIceBlock: 'flatten',
+    obTombstone: 'flatten', obCoffin: 'trip', obPumpkin: 'bounce',
+    obGumdrop: 'bounce', obCupcake: 'bounce', obLollipop: 'spinout',
+    obCandyCane: 'tangle', obChocFountain: 'flatten',
   };
 
   _die() {

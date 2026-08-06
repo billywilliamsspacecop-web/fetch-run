@@ -207,6 +207,13 @@ export function buildWorld(scene, camera) {
       const place = (theta, side, jitter) => {
         const alpha = side * (clearance + spec.near + jitter * span);
         const obj = spec.make();
+        // Scenery gets the same dark line the obstacles do — without it the
+        // stage split into two art styles, outlined things in the lanes and
+        // un-outlined ones either side of them. It's a heavier line than a
+        // prop's (background objects are small on screen and a hairline
+        // disappears) and it skips the tiny details (see addOutline's
+        // minRadius) so the draw-call count stays sane out here.
+        P.addOutline(obj, { thickness: 0.06, minRadius: 0.07 });
         obj.traverse((o) => { if (o.isMesh && !o.userData.isOutline) o.castShadow = true; });
         group.add(surfacePivot(theta, alpha, obj));
       };
@@ -232,12 +239,13 @@ export function buildWorld(scene, camera) {
   // Lane-divider dashes ring the whole globe — they scroll with the spin and
   // sell the "world rolling toward you" feel. Instanced: one draw call.
   const dashGeo = new THREE.BoxGeometry(0.05, 0.02, 0.34);
-  // Opacity raised from 0.55: the ticks are now a contrasting colour per
-  // theme (heaven's are near-black on a white floor), and at 0.55 the darker
-  // ones washed out into the ground they're supposed to stand against.
-  const dashMat = new THREE.MeshBasicMaterial({
-    color: first.dash, transparent: true, opacity: 0.8,
-  });
+  // Opaque now that they carry an outline. They used to be blended at 0.8 to
+  // soften them against the ground; with a dark shell behind them that blend
+  // pulled the shell's colour THROUGH the tick, so the same lane markings came
+  // out muddy or bright depending on draw order. The outline does the job the
+  // transparency was doing — separating tick from ground — and does it
+  // consistently.
+  const dashMat = new THREE.MeshBasicMaterial({ color: first.dash });
   const boundaries = [];
   for (let b = -2.5; b <= 2.5; b++) boundaries.push(b * CONFIG.laneAngle);
   const perRing = 46;
@@ -255,6 +263,14 @@ export function buildWorld(scene, camera) {
     }
   }
   planetGroup.add(dashes);
+  // ...and the trail markings carry the line too. A dash is a thin chip lying
+  // flat on the ground, so the shell grows by a fixed few MILLIMETRES rather
+  // than by a percentage: the tick is only 5cm across, and the 5cm margin a
+  // prop-sized outline would give doubled its width into a fat domino.
+  const dashOutline = P.outlineInstanced(
+    dashes, new THREE.BoxGeometry(0.05 + 0.022, 0.02 + 0.012, 0.34 + 0.022)
+  );
+  planetGroup.add(dashOutline);
 
   // Ground tufts inside the lane band — texture underfoot (grass, or floor
   // grain indoors; the theme just retints them)
@@ -270,11 +286,17 @@ export function buildWorld(scene, camera) {
     tufts.setMatrixAt(i, m);
   }
   planetGroup.add(tufts);
+  // Fattened cone, and dropped so the wider base still meets the ground
+  // instead of hovering a shell's thickness above it.
+  const tuftFat = new THREE.ConeGeometry(0.07 + 0.025, 0.16 + 0.04, 5);
+  tuftFat.translate(0, -0.012, 0);
+  const tuftOutline = P.outlineInstanced(tufts, tuftFat);
+  planetGroup.add(tuftOutline);
 
   // Clouds orbit slowly at lateral offsets so they never hit the camera
   const clouds = [];
   for (let i = 0; i < 7; i++) {
-    const cloud = P.scCloud();
+    const cloud = P.addOutline(P.scCloud(), { thickness: 0.09 });
     const side = i % 2 === 0 ? -1 : 1;
     const alpha = side * (0.35 + Math.random() * 0.75);
     const pivot = surfacePivot(Math.random() * Math.PI * 2, alpha, cloud, R + 6 + Math.random() * 4);
@@ -316,7 +338,7 @@ export function buildWorld(scene, camera) {
   }
 
   return {
-    planetGroup, clouds, sunDisc, sceneryGroups, tufts, starfield, bubbles,
+    planetGroup, clouds, sunDisc, sceneryGroups, tufts, tuftOutline, starfield, bubbles,
     lights: { hemi, sun },
     tintables: {
       planetMat: planet.material,

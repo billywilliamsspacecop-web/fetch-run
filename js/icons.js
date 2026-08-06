@@ -18,21 +18,36 @@ import { buildChase } from './squirrel.js';
 // absurd, and they never need to animate.
 
 const SIZE = 128;                 // 2x the largest on-screen use, for retina
-let renderer = null;
-let scene = null;
-let camera = null;
 const cache = new Map();
 
-function ensureRig() {
-  if (renderer) return;
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+// A renderer is built, used ONCE, and torn down immediately — see bake().
+// A shared long-lived rig was the original design (cheaper per bake, since
+// most of this setup is skipped after the first call), but it meant a 4th
+// permanent WebGL context sitting alongside the three the game already runs
+// continuously (main scene, character select, shop preview). Some browsers —
+// mobile Safari in particular — cap the number of live WebGL contexts per
+// page well below desktop, and the context that loses out doesn't throw: it
+// silently starts handing back blank frames, which is what a "broken"
+// three.js-baked icon actually looks like (there's no image file to 404 on —
+// every icon is a data: URL baked in memory). Paying full rig setup per icon
+// is negligible: there are ~26 icons total and each is only ever baked once,
+// after which the result is cached and this whole path is skipped.
+function bake(obj, { yaw = 0.6, pitch = 0.35, zoom = 1 } = {}) {
+  // preserveDrawingBuffer: true is required for this exact pattern (render,
+  // then immediately read the pixels back). Without it, a browser is free to
+  // clear the backbuffer right after compositing and before the toDataURL()
+  // call below actually runs, which reads back as a fully transparent PNG —
+  // a valid image that LOOKS broken because there's nothing drawn in it.
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true, alpha: true, preserveDrawingBuffer: true,
+  });
   renderer.setSize(SIZE, SIZE, false);
   renderer.setPixelRatio(1);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.2;
 
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
 
   // Lit brighter and flatter than the game world: an icon is read at 24px
   // against a dark chip, so shape legibility beats moody shading.
@@ -43,15 +58,8 @@ function ensureRig() {
   const rim = new THREE.DirectionalLight(0x9fd0ff, 0.9);
   rim.position.set(-3, 1.5, -2);
   scene.add(rim);
-}
 
-// Frames `obj` from its own bounding box, so every icon fills the tile the
-// same amount regardless of how big the underlying model happens to be.
-function bake(obj, { yaw = 0.6, pitch = 0.35, zoom = 1 } = {}) {
-  ensureRig();
-  const holder = new THREE.Group();
-  holder.add(obj);
-  scene.add(holder);
+  scene.add(obj);
 
   const box = new THREE.Box3().setFromObject(obj);
   const size = new THREE.Vector3();
@@ -59,6 +67,14 @@ function bake(obj, { yaw = 0.6, pitch = 0.35, zoom = 1 } = {}) {
   box.getSize(size);
   box.getCenter(centre);
   const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
+
+  // Same dark line the props wear in the world, so the HUD and shop chips
+  // belong to the same drawing. Sized from the SUBJECT rather than fixed:
+  // every icon is framed to fill the same 128px square, so a constant world
+  // thickness would come out hairline on a big prop and a blob on a small
+  // one. Added after the measurement above — the shell sits proud of the
+  // mesh, and framing to it would leave a visible margin.
+  P.addOutline(obj, { thickness: radius * 0.03 });
 
   // Distance that fits `radius` in the vertical fov, with a little air
   const dist = (radius / Math.tan((camera.fov * Math.PI) / 360)) * 1.9 / zoom;
@@ -72,8 +88,19 @@ function bake(obj, { yaw = 0.6, pitch = 0.35, zoom = 1 } = {}) {
 
   renderer.render(scene, camera);
   const url = renderer.domElement.toDataURL('image/png');
-  scene.remove(holder);
-  return url;
+
+  // Free the context immediately rather than waiting on GC — on a
+  // context-limited browser, THIS is what makes room for the next bake (and
+  // for the game's own renderers) instead of racing them for a slot.
+  renderer.dispose();
+  renderer.forceContextLoss();
+
+  // A fully blank render still produces a "valid" (small, mostly-uniform)
+  // PNG — the browser has nothing to 404 on, so this is the only place that
+  // can catch it. Real icons in this game are never under ~1.5kb; a blank
+  // 128x128 alpha PNG is a few hundred bytes. Treated as a failure so the
+  // caller falls back to nothing rather than caching a blank forever.
+  return url.length > 1500 ? url : '';
 }
 
 // Powerup props come pre-wrapped in the pickup glow language (halo ring,
@@ -232,6 +259,12 @@ const VIEWS = {
 // Data URL for an icon, built on first request and cached thereafter.
 // Returns '' for unknown names so a missing icon degrades to a blank tile
 // rather than throwing inside a template string.
+//
+// Only a SUCCESSFUL bake is cached. A blank/failed one is left uncached on
+// purpose — the shop re-renders its whole chip list on almost every
+// interaction (buying, equipping, sorting), so the very next render just
+// tries again rather than a transient failure baking in a blank icon for
+// the rest of the session.
 export function icon(name) {
   if (cache.has(name)) return cache.get(name);
   const build = BUILDERS[name];
@@ -243,12 +276,19 @@ export function icon(name) {
   } catch {
     url = '';
   }
-  cache.set(name, url);
+  if (url) cache.set(name, url);
   return url;
 }
 
 // Convenience for templating: a ready-to-drop <img>.
+// onerror is a belt-and-suspenders fallback for the one case bake() and its
+// own validation can't see: a data: URL that decodes fine at render time but
+// that this particular browser/GPU combination refuses to display. Rather
+// than showing the browser's broken-image glyph, it removes itself — same
+// blank-but-clean degradation as when icon() returns '' up front.
 export function iconImg(name, cls = 'icon') {
   const src = icon(name);
-  return src ? `<img class="${cls}" src="${src}" alt="">` : `<span class="${cls}"></span>`;
+  return src
+    ? `<img class="${cls}" src="${src}" alt="" onerror="this.remove()">`
+    : `<span class="${cls}"></span>`;
 }

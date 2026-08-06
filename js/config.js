@@ -98,21 +98,32 @@ export const CONFIG = {
     scorchLaneDist: 0.75,  // lane distance counted as "your lane"
   },
 
-  // Themed levels (see themes.js). Stages advance through the theme list in
-  // order, spending a random 1-3 stages in each before moving on. Shortened
-  // from 2-4 so worlds cycle noticeably quicker without being a blur.
+  // Themed levels (see themes.js). A finished world rolls for the next one by
+  // rarity tier; how long you stay is this range, scaled down for the rarer
+  // tiers (RARITY.stageScale). Shortened from 2-4 so worlds cycle noticeably
+  // quicker without being a blur.
   themeStagesMin: 1,
   themeStagesMax: 3,
 
-  // Chance that a finished theme block drops into an ultra-rare stage
-  // (heaven / hell / underwater / space) instead of the next normal world.
-  // Rare stages always last exactly one stage.
+  // Chance that a finished theme block drops into a SPECIAL world (the rare
+  // and epic tiers) instead of a common/uncommon one. Which tier, and which
+  // world inside it, is a second weighted roll — see pickNextTheme in
+  // themes.js. Specials always last exactly one stage.
   rareChance: 0.18,
 
   // Playtest switches, also driven by URL flags (?stages=rare) and the
   // settings panel. Live: everything that reads these re-reads them per frame.
-  rareOnly: false,          // run ONLY the special worlds, in order
+  rareOnly: false,          // run ONLY the rare/epic worlds, in order
   rareTestStageLength: 320, // shorter stages so they cycle quickly
+
+  // Scenery outlines. Obstacles, pickups and characters always carry the dark
+  // line — it's how you read them — but SCENERY is hundreds of objects and
+  // each shell is its own draw call, which is roughly a third more of them in
+  // the busiest worlds (the house and the graveyard are the two to watch). On
+  // a phone that can't hold 60fps, this is the first thing to turn off: the
+  // stage keeps its whole look inside the lanes and only the background goes
+  // back to flat shapes.
+  sceneryOutlines: true,
 
   // Dev tools. All live — read every frame, toggled from the settings panel.
   devHitboxes: false,       // draw the actual collision volumes
@@ -180,13 +191,13 @@ const fromMph = (mph) => mph / (CONFIG.metersPerRadian * 2.23694);
 
 export const SETTINGS = [
   {
-    key: 'rareChance', label: 'Rare stage chance', hint: 'how often heaven / hell / the deep / space turn up',
+    key: 'rareChance', group: 'Worlds', label: 'Special stage chance', hint: 'how often a RARE or EPIC world turns up instead of the usual rotation',
     min: 0, max: 100, step: 5, suffix: '%',
     read: () => Math.round(CONFIG.rareChance * 100),
     write: (v) => { CONFIG.rareChance = v / 100; },
   },
   {
-    key: 'worldLength', label: 'World length', hint: 'stages before the theme changes',
+    key: 'worldLength', group: 'Worlds', label: 'World length', hint: 'stages before the theme changes',
     min: 1, max: 6, step: 1, suffix: '',
     read: () => CONFIG.themeStagesMax,
     // Keeps the min a notch below the max so worlds still vary in length,
@@ -194,34 +205,41 @@ export const SETTINGS = [
     write: (v) => { CONFIG.themeStagesMax = v; CONFIG.themeStagesMin = Math.max(1, v - 1); },
   },
   {
-    key: 'stageLength', label: 'Stage length', hint: 'metres per checkpoint',
+    key: 'stageLength', group: 'Worlds', label: 'Stage length', hint: 'metres per checkpoint',
     min: 100, max: 1600, step: 50, suffix: 'm',
     read: () => CONFIG.stageLength,
     write: (v) => { CONFIG.stageLength = v; },
   },
   {
-    key: 'startSpeed', label: 'Starting speed', hint: '',
+    key: 'startSpeed', group: 'Speed', label: 'Starting speed', hint: '',
     min: 40, max: 700, step: 10, suffix: ' mph',
     read: () => toMph(CONFIG.baseSpeed),
     write: (v) => { CONFIG.baseSpeed = fromMph(v); },
   },
   {
-    key: 'topSpeed', label: 'Top speed', hint: 'the ceiling the stage ramp climbs to',
+    key: 'topSpeed', group: 'Speed', label: 'Top speed', hint: 'the ceiling the stage ramp climbs to',
     min: 100, max: 1600, step: 20, suffix: ' mph',
     read: () => toMph(CONFIG.maxSpeed),
     write: (v) => { CONFIG.maxSpeed = fromMph(v); },
   },
   {
-    key: 'speedRamp', label: 'Speed ramp', hint: 'added at every checkpoint',
+    key: 'speedRamp', group: 'Speed', label: 'Speed ramp', hint: 'added at every checkpoint',
     min: 0, max: 120, step: 2, suffix: ' mph',
     read: () => toMph(CONFIG.stageSpeedBump),
     write: (v) => { CONFIG.stageSpeedBump = fromMph(v); },
   },
   {
-    key: 'rareOnly', label: 'Special stages only', hint: 'loop the four rare worlds in order',
+    key: 'rareOnly', group: 'Worlds', label: 'Special stages only', hint: 'loop every rare and epic world in order',
     toggle: true,
     read: () => CONFIG.rareOnly,
     write: (v) => { CONFIG.rareOnly = v; },
+  },
+  {
+    key: 'sceneryOutlines', group: 'Worlds', label: 'Scenery outlines',
+    hint: 'dark outlines on background props — turn off if the frame rate dips',
+    toggle: true,
+    read: () => CONFIG.sceneryOutlines,
+    write: (v) => { CONFIG.sceneryOutlines = v; },
   },
   // --- dev tools, kept together at the bottom ---
   {

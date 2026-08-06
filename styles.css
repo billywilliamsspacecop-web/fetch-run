@@ -236,15 +236,25 @@ html, body {
   100% { transform: scale(1); }
 }
 
+/* Sized with clamp(min, vmin%, max) rather than a flat px value. A flat 20px
+   was tuned against a ~375px-wide phone viewport, where it reads fine — but
+   the canvas fills whatever window it's given (main.js sizes the renderer to
+   window.innerWidth/Height with no aspect cap), so on a desktop-sized browser
+   window the exact same 20px sits inside a much bigger picture and reads as
+   tiny. vmin scales with the SMALLER of width/height, so it tracks "how big
+   is this window" on both a tall phone and a wide desktop preview, and the
+   min/max clamp keeps it from ever going illegibly small or comically large.
+   The whole hud-top cluster is scaled together so the hierarchy between the
+   score and the smaller lines under it doesn't shift with viewport size. */
 #hud-distance {
-  font-size: 20px;
+  font-size: clamp(22px, 5.2vmin, 38px);
   font-weight: 900;
   line-height: 1.1;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
 }
 
 #hud-balls {
-  font-size: 13px;
+  font-size: clamp(14px, 3.4vmin, 24px);
   font-weight: 800;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
 }
@@ -253,7 +263,7 @@ html, body {
    quieter than it: the run total is what you're playing for right now, the
    bank is what you're saving toward. */
 #hud-bank {
-  font-size: 10px;
+  font-size: clamp(11px, 2.6vmin, 18px);
   font-weight: 800;
   letter-spacing: 0.5px;
   opacity: 0.6;
@@ -262,7 +272,7 @@ html, body {
 }
 
 #hud-closecalls {
-  font-size: 11px;
+  font-size: clamp(12px, 2.9vmin, 20px);
   font-weight: 800;
   color: #ffd54f;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
@@ -383,7 +393,8 @@ html, body {
    horizon; here it can't cover anything you have to dodge. */
 #stage-banner {
   margin-top: 2px;
-  font-size: 13px;
+  /* Scales with the same vmin rule as the rest of #hud-top, see hud-distance */
+  font-size: clamp(14px, 3.4vmin, 24px);
   font-weight: 900;
   letter-spacing: 1.5px;
   color: rgba(255, 213, 79, 0.95);
@@ -401,7 +412,7 @@ html, body {
 }
 
 .banner-sub {
-  font-size: 10px;
+  font-size: clamp(10px, 2.4vmin, 16px);
   font-weight: 800;
   letter-spacing: 2px;
   color: rgba(255, 246, 224, 0.9);
@@ -421,6 +432,32 @@ html, body {
   -webkit-text-stroke: 0.7px rgba(120, 60, 160, 0.55);
   letter-spacing: 2.5px;
 }
+
+/* The tier flash under the world name. Deliberately small and quiet for the
+   two ordinary tiers — a COMMON badge shouting at you every world change is
+   noise — and loud for the two that are worth stopping for. */
+.banner-rarity {
+  font-size: clamp(8px, 1.7vmin, 11px);
+  font-weight: 900;
+  letter-spacing: 3px;
+  -webkit-text-stroke: 0;
+  opacity: 0.72;
+}
+
+#stage-banner.tier-common .banner-rarity { color: #d6dde8; }
+#stage-banner.tier-uncommon .banner-rarity { color: #5fe08f; opacity: 0.9; }
+#stage-banner.tier-rare .banner-rarity {
+  color: #7fc8ff;
+  opacity: 1;
+  text-shadow: 0 0 10px rgba(95, 184, 255, 0.8);
+}
+#stage-banner.tier-epic .banner-rarity {
+  color: #dcb0ff;
+  opacity: 1;
+  letter-spacing: 4px;
+  text-shadow: 0 0 12px rgba(192, 122, 255, 0.9);
+}
+#stage-banner.tier-epic { color: #fff; -webkit-text-stroke: 1px rgba(120, 40, 190, 0.7); }
 
 @keyframes stagePop {
   0% { opacity: 0; transform: scale(0.4); }
@@ -475,6 +512,19 @@ html, body {
     rgba(214, 190, 255, 0) 62%,
     rgba(214, 190, 255, 0) 100%);
   animation: irisSweep 1.3s cubic-bezier(0.3, 0, 0.2, 1) forwards;
+}
+
+/* Epic gets its own colour on the threshold sweep — violet and gold, so the
+   two special tiers don't arrive looking identical. */
+.transition.iris.tier-epic {
+  background: radial-gradient(circle at 50% 42%,
+    rgba(226, 176, 255, 0) 0%,
+    rgba(226, 176, 255, 0) 28%,
+    rgba(192, 122, 255, 0.95) 40%,
+    rgba(255, 214, 120, 0.7) 50%,
+    rgba(192, 122, 255, 0) 64%,
+    rgba(192, 122, 255, 0) 100%);
+  animation: irisSweep 1.5s cubic-bezier(0.3, 0, 0.2, 1) forwards;
 }
 
 @keyframes irisSweep {
@@ -691,8 +741,8 @@ html, body {
 }
 
 .shop-card {
-  width: min(90vw, 420px);
-  max-height: 74vh;
+  width: min(94vw, 540px);
+  max-height: 84vh;
   overflow-y: auto;
   padding: 20px;
   border-radius: 24px;
@@ -715,8 +765,9 @@ html, body {
 }
 
 .shop-chip {
-  flex: 1 1 40%;
-  min-width: 100px;
+  flex: 1 1 calc(33.333% - 8px);
+  min-width: 96px;
+  max-width: 170px;
   padding: 10px 6px 8px;
   font-family: inherit;
   font-size: 14px;
@@ -820,9 +871,245 @@ html, body {
   gap: 14px;
 }
 
+/* ---- settings tabs + stats ---- */
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.tab {
+  flex: 1;
+  padding: 9px 4px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.tab.on {
+  background: linear-gradient(#ffe082, #ffc93d);
+  color: #402a10;
+}
+
+.tab[data-tab="dev"].on {
+  background: linear-gradient(#b6ff8f, #7cfc4f);
+  color: #1c3a10;
+}
+
+.setting-group {
+  margin-bottom: 6px;
+}
+
+/* Toggles sit inline with their label rather than as a full-width bar below
+   it. Left full width, the button ate half the row and forced short labels
+   like "Special stages only" to wrap onto three lines. */
+.setting-head .setting-toggle {
+  flex: 0 0 96px;
+  width: 96px;
+  margin-top: 0;
+  padding: 7px 4px;
+  font-size: 12px;
+}
+
+.setting-head b {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Headline numbers are tiles, not charts — a single value has no shape */
+.stat-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  text-align: left;
+}
+
+.stat-tile span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  opacity: 0.6;
+}
+
+.stat-tile b {
+  font-size: 19px;
+  font-weight: 900;
+  color: #ffc93d;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Horizontal bars: length is the encoding, so the scale is shared and every
+   bar is directly labelled with its value — no axis to read off. */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(86px, 34%) 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.bar-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  opacity: 0.85;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.bar-label .tag {
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(168, 124, 224, 0.28);
+  color: #cbb0f5;
+}
+
+.bar-track {
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: #e8b02e;
+}
+
+.bar-fill.rare {
+  background: #a87ce0;
+}
+
+.bar-value {
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.9);
+  min-width: 2ch;
+  text-align: right;
+}
+
+.stat-empty {
+  font-size: 12px;
+  opacity: 0.5;
+  padding: 6px 0 10px;
+}
+
+.stat-empty.big {
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 40px 0;
+}
+
+.stat-note {
+  font-size: 12px;
+  opacity: 0.8;
+  line-height: 1.5;
+  padding: 2px 0 8px;
+}
+
+.stat-note b { color: #cbb0f5; }
+
+/* THE COLLECTION — every world in the game, grouped by rarity tier, with the
+   ones you haven't reached left as blanks. The tier colour is carried on the
+   left edge rather than the text so four groups stacked together still read
+   as one list instead of four different signs. */
+.rarity-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0 10px;
+}
+
+.rarity-group {
+  border-left: 3px solid var(--tier, #d6dde8);
+  padding-left: 9px;
+}
+
+.rarity-group.tier-common { --tier: #d6dde8; }
+.rarity-group.tier-uncommon { --tier: #5fe08f; }
+.rarity-group.tier-rare { --tier: #5fb8ff; }
+.rarity-group.tier-epic { --tier: #c07aff; }
+
+.rarity-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--tier);
+  margin-bottom: 4px;
+}
+
+.rarity-head b {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+.rarity-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.world-chip {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.28);
+}
+
+.world-chip.found {
+  background: color-mix(in srgb, var(--tier) 22%, transparent);
+  color: var(--tier);
+}
+
+.settings-reset.danger {
+  color: rgba(255, 160, 150, 0.85);
+}
+
+.dev-note { color: rgba(124, 252, 79, 0.7); }
+
 .settings-card {
-  width: min(90vw, 420px);
-  max-height: 74vh;
+  width: min(94vw, 540px);
+  max-height: 84vh;
   overflow-y: auto;
   padding: 20px;
   border-radius: 24px;
@@ -1041,4 +1328,20 @@ html, body {
   background: linear-gradient(#ffe082, #ffc93d);
   color: #402a10;
   box-shadow: 0 4px 0 #c98f1b, 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+
+/* Sort control reuses the tab pills, sized down — it's a filter, not a
+   destination, so it shouldn't compete with the section headings. */
+.sort-row {
+  margin: 4px 0 2px;
+}
+
+.sort-row .tab {
+  padding: 7px 4px;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.chip-name {
+  line-height: 1.2;
 }

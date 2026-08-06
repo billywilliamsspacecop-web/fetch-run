@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addOutline } from './props.js';
 import { CONFIG } from './config.js';
 import { lambert } from './props.js';
 
@@ -28,5 +29,5 @@ export function makeFence() {
     }
   }
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
-  return g;
+  return addOutline(g, { thickness: 0.03 });
 }

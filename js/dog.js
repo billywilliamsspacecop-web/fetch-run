@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { COLORS, BREEDS, COSMETICS } from './config.js';
+import { addOutline } from './props.js';
 
 // Cosmetic hats, as a standalone group positioned for the chibi head. Pulled
 // out of buildDog so the shop's 3D icons can render the real hat rather than
@@ -513,6 +514,9 @@ export function buildDog(breedKey = 'gsp', cosmetics = {}) {
   }
 
   dog.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  // Lighter than the props: a character is already high-contrast against
+  // the ground, and a heavy line on a chibi face reads as a black smear.
+  addOutline(dog, { thickness: 0.016 });
 
   return { group: dog, animate, ridePose };
 }

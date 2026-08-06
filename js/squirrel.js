@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { addOutline } from './props.js';
 
 // Chase targets: the quarry bounding along ahead of the runner, dodging on
 // its own. Squirrel is default; rabbit and butterfly unlock in the shop.
@@ -366,6 +367,7 @@ export function buildChase(id = 'squirrel') {
     buildSquirrelModel();
 
   model.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  addOutline(model.root, { thickness: 0.014 });
 
   function animate(t, speed) {
     const freq = 11 + speed * 26;
