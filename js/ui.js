@@ -39,6 +39,8 @@ export class UI {
     this.onMuteToggle = null;
     this.onShopPreview = null; // set by main; drives the shop's 3D preview
     this.onShopClose = null;   // set by main; parks the preview turntable
+    // set by main; lets the settings panel tell a live run from a dead one
+    this.isRunInProgress = null;
 
     // ?unlockall — everything owned, nothing charged. For looking at the
     // catalogue without grinding for it. Deliberately URL-driven so it can't
@@ -60,7 +62,13 @@ export class UI {
     this.el['btn-settings-close'].addEventListener('click', (e) => {
       e.stopPropagation();
       this.el.settings.classList.add('hidden');
-      if (this._settingsFrom === 'pause') this.showPaused();
+      // Decided by whether a run is actually IN PROGRESS, not by where the
+      // panel remembers being opened from. Falling through to showMenu() while
+      // a paused run was still alive underneath put the main menu on screen
+      // with the run hidden behind it — and the next tap on PLAY started a
+      // fresh run, which silently threw the old one's score away. The remembered
+      // origin is only a fallback now, for when there's no run to go back to.
+      if (this.isRunInProgress?.() || this._settingsFrom === 'pause') this.showPaused();
       else this.showMenu();
       this._settingsFrom = null;
     });

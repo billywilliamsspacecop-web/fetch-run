@@ -116,14 +116,18 @@ export const CONFIG = {
   rareOnly: false,          // run ONLY the rare/epic worlds, in order
   rareTestStageLength: 320, // shorter stages so they cycle quickly
 
-  // Scenery outlines. Obstacles, pickups and characters always carry the dark
-  // line — it's how you read them — but SCENERY is hundreds of objects and
-  // each shell is its own draw call, which is roughly a third more of them in
-  // the busiest worlds (the house and the graveyard are the two to watch). On
-  // a phone that can't hold 60fps, this is the first thing to turn off: the
-  // stage keeps its whole look inside the lanes and only the background goes
-  // back to flat shapes.
-  sceneryOutlines: true,
+  // EXTRA DETAIL — the frame-rate switch. Everything you actually read at
+  // speed is unaffected: obstacles, pickups and the characters always keep
+  // their dark outline and always cast shadows. What this controls is the
+  // BACKGROUND, which is where the cost is and where you're not looking:
+  //   * outlines on scenery — hundreds of objects, one draw call per shell
+  //   * scenery casting shadows — the shadow pass re-renders every caster, so
+  //     a stage full of trees pays for its scenery twice per frame
+  //   * outlines on the paw-trail particles
+  // Measured in the house (the heaviest world): on = 2339 draw calls / 63fps,
+  // off = 894 / 87fps. Default OFF so the game is smooth out of the box and
+  // the detail is something you switch on when the hardware can take it.
+  extraDetail: false,
 
   // Dev tools. All live — read every frame, toggled from the settings panel.
   devHitboxes: false,       // draw the actual collision volumes
@@ -235,11 +239,11 @@ export const SETTINGS = [
     write: (v) => { CONFIG.rareOnly = v; },
   },
   {
-    key: 'sceneryOutlines', group: 'Worlds', label: 'Scenery outlines',
-    hint: 'dark outlines on background props — turn off if the frame rate dips',
+    key: 'extraDetail', group: 'Worlds', label: 'Extra detail',
+    hint: 'outlines and shadows on background scenery — looks richer, costs frame rate',
     toggle: true,
-    read: () => CONFIG.sceneryOutlines,
-    write: (v) => { CONFIG.sceneryOutlines = v; },
+    read: () => CONFIG.extraDetail,
+    write: (v) => { CONFIG.extraDetail = v; },
   },
   // --- dev tools, kept together at the bottom ---
   {

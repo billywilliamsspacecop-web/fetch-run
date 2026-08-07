@@ -183,6 +183,7 @@ const game = new Game({ planetGroup, dogPivot, squirrelPivot, fx, sfx }, input, 
 ui.onScreenTap = () => game.handleScreenTap();
 ui.onRunAgain = () => game.handleScreenTap();
 ui.onHome = () => game.goHome();
+ui.isRunInProgress = () => game.state === 'running' || game.state === 'intro';
 ui.onPauseToggle = () => { sfx.uiTap(); game.togglePause(); };
 ui.onMuteToggle = () => sfx.toggle();
 ui.setMuted(!sfx.enabled);
@@ -313,27 +314,37 @@ function applyThemeSwap(theme) {
   shownThemeId = theme.id;
 }
 
-// The scenery outline shells, gathered once so the quality toggle is a flat
-// pass over an array rather than a traverse of every scenery group in the
-// game. Only collected on demand — most sessions never touch the setting.
-let sceneryOutlineMeshes = null;
-let sceneryOutlinesShown = true;
+// Extra detail (CONFIG.extraDetail): the frame-rate switch. Both halves are
+// SCENERY only — the shells and casters inside the lanes are never touched.
+// Gathered once into flat arrays, because the alternative is traversing every
+// scenery group in the game on a setting most sessions never change.
+let sceneryShells = null;   // outline hulls
+let sceneryCasters = null;  // meshes that were built casting shadows
+let detailShown = null;     // null so the first frame always applies the default
 
-function applySceneryOutlines() {
-  const want = CONFIG.sceneryOutlines;
-  if (want === sceneryOutlinesShown) return;
-  if (!sceneryOutlineMeshes) {
-    sceneryOutlineMeshes = [];
+function applyExtraDetail() {
+  const want = CONFIG.extraDetail;
+  if (want === detailShown) return;
+  if (!sceneryShells) {
+    sceneryShells = [];
+    sceneryCasters = [];
     for (const grp of Object.values(sceneryGroups)) {
-      grp.traverse((o) => { if (o.userData.isOutline) sceneryOutlineMeshes.push(o); });
+      grp.traverse((o) => {
+        if (o.userData.isOutline) sceneryShells.push(o);
+        else if (o.isMesh && o.castShadow) sceneryCasters.push(o);
+      });
     }
   }
-  for (const o of sceneryOutlineMeshes) o.visible = want;
-  sceneryOutlinesShown = want;
+  for (const o of sceneryShells) o.visible = want;
+  // The shadow pass renders every caster a second time, so this is the larger
+  // half of the saving — and the cheapest to give up: scenery sits outside the
+  // lanes, and its shadows fall on ground the camera never frames.
+  for (const o of sceneryCasters) o.castShadow = want;
+  detailShown = want;
 }
 
 function lerpTheme(dt) {
-  applySceneryOutlines();
+  applyExtraDetail();
   const theme = game.state === 'menu' ? THEMES[0] : game.theme;
   if (theme.id !== shownThemeId) applyThemeSwap(theme);
 

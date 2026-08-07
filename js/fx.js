@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TRAILS } from './config.js';
+import { CONFIG, TRAILS } from './config.js';
 
 // Tiny pooled particle system: dust, bursts, wind streaks, tumbling planks.
 export class FX {
@@ -90,11 +90,14 @@ export class FX {
   // backward for length. The streak is what you actually see at speed — the
   // particles are only the texture inside it.
   dust(pos, look = TRAILS.dust) {
-    // Thin. The dust spheres are 6-segment and only a few centimetres across,
-    // so a prop-weight line (0.3 = 30% bigger) turned each one into a dark
-    // hexagon ring and the trail read as a chain of debug wireframes. At 0.12
-    // it rims them and lets the tint through.
-    this._spawn(pos, { ...look, outline: look.outline ?? 0.12 });
+    // Outlined only on Extra detail. Every shell is a second mesh AND a second
+    // material on something there are ~70 of at once, which measured at about
+    // 1.7ms a frame — real money for a line on a particle that lives half a
+    // second. Thin when it is on: the dust spheres are 6-segment and a few
+    // centimetres across, so a prop-weight line (0.3) turned each into a dark
+    // hexagon ring and the trail read as a chain of debug wireframes.
+    const outline = CONFIG.extraDetail ? (look.outline ?? 0.12) : 0;
+    this._spawn(pos, { ...look, outline });
     if (look.streak) {
       // Every other tick, not every one. At every tick the bars overlap into a
       // solid slab and the individual particles stop being visible inside it.
@@ -109,7 +112,7 @@ export class FX {
             // Half-transparent from birth. At full opacity the pair stopped
             // being a plume and became two solid rails painted on the grass,
             // and the particles inside them disappeared.
-            alpha: 0.5, outline: 0.18,
+            alpha: 0.5, outline: CONFIG.extraDetail ? 0.18 : 0,
             geo: this.trailGeo, gravity: 0,
             vel: new THREE.Vector3(side * (0.3 + Math.random() * 0.55), 0.3, 8.5),
           });

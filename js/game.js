@@ -18,12 +18,11 @@ const _v = new Vector3();
 // obstacles would pass straight THROUGH the runner without registering.
 const swept = (prev, cur, halfWidth) => prev <= halfWidth && cur >= -halfWidth;
 
-// How far ahead the quarry starts reading a door gate, in radians. Ordinary
-// props are scanned at 0.35 — plenty for a dodge — but a gate has to be picked
-// once and committed to, and at top speed 0.35rad is under two tenths of a
-// second. This is most of the way back to the spawn distance, so the squirrel
-// lines up on its doorway while the wall is still on the horizon.
-const SQ_GATE_LOOKAHEAD = 0.95;
+// The quarry aims to be lined up on its doorway this far into the wall's
+// approach — 0.45 means "be standing in the gap by the time the wall is 45% of
+// the way here", leaving better than half the run-up as margin. Everything
+// after that is the deadline tightening (see _updateSquirrel).
+const SQ_GATE_CLOSE = 0.45;
 
 // Game states: 'menu' -> 'intro' -> 'running' -> 'dead' -> ...
 // The intro is the chase short: squirrel bolts, runner follows, fence smashes.
@@ -599,25 +598,42 @@ export class Game {
     // "pick the safest" tie-break resolved to a coin flip among five panels.
     // The quarry ran into the front of the house about four times in five.
     //
-    // So gates get their own pass, ahead of everything else: scanned further
-    // out than ordinary props — the whole wall arrives at once and there is no
-    // dodging it late — and once a doorway is chosen the lane is HELD until
-    // the wall is behind it. No dodging, no idle wander; the only thing that
-    // matters between here and the threshold is being lined up on the gap.
-    let door = null;
+    // So gates get their own pass, ahead of everything else: the doorway is
+    // sought from the moment the wall exists, and once chosen the lane is HELD
+    // until the wall is behind it. No dodging, no idle wander; the only thing
+    // that matters between here and the threshold is being lined up on the gap.
+    let door = null, doorCur = 0;
     for (const e of this.spawner.entities) {
       if (!e.isDoor) continue;
       const cur = this.spin + e.theta0 - sqT;
-      if (cur < -SQ_GATE_LOOKAHEAD || cur > 0.02) continue;
+      if (cur > 0.02) continue; // already through it
       // Nearest gap wins, so it doesn't cut across the whole track for a
       // doorway no better than the one beside it.
       if (door === null || Math.abs(e.lane - this.sqLane) < Math.abs(door - this.sqLane)) {
         door = e.lane;
+        doorCur = cur;
       }
     }
     if (door !== null) {
       this.sqTargetLane = door;
-      this._tweenSquirrel(dt);
+      // Crossing to the doorway runs on a DEADLINE, not the fixed lane-change
+      // rate the ordinary dodge uses. A fixed rate takes about the same 0.45s
+      // to cross the track however fast the world is moving, so past roughly
+      // 700mph the wall arrived while the quarry was still over a solid panel
+      // — it clipped straight through the front of the house, and anyone
+      // following it as a tell ran into the panel and died. That is what was
+      // still broken after the last fix: the lane CHOICE was right all along,
+      // it just wasn't reached in time.
+      //
+      // Closing a fraction of the remaining gap per frame, where the fraction
+      // is set by how long is actually left, makes the crossing take a fixed
+      // share of the approach at any speed: a slow glide when the wall is far
+      // off, and as urgent as it needs to be when it isn't.
+      const timeLeft = -doorCur / Math.max(0.05, this.speed);
+      const closeBy = timeLeft * SQ_GATE_CLOSE;
+      this.sqLane += (door - this.sqLane) * (closeBy <= dt ? 1 : Math.min(1, dt / closeBy));
+      this.squirrelPivot.rotation.x = sqT;
+      this.squirrelPivot.rotation.z = laneAlpha(this.sqLane);
       return;
     }
 
