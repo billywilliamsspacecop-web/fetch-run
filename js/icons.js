@@ -208,6 +208,7 @@ const BUILDERS = {
   steak: () => baresPickup(P.powerSteak),
   rocket: () => baresPickup(P.powerRocket),
   slowmo: () => baresPickup(P.powerHourglass),
+  shrink: () => baresPickup(P.powerShrink),
   scorch: () => baresPickup(P.powerFlame),
 
   gear: makeGear,

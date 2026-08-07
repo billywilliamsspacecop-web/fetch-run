@@ -357,6 +357,37 @@ export function powerRocket() {
   return makePowerup(g, 0x9be8ff);
 }
 
+// SHRINK — takes Slo-Mo's slot in the stacking model. A potion, because it
+// has to read as "this changes YOU" at a glance rather than as another tool:
+// the arrows pointing inward do that job in one frame at speed, where a
+// smaller-dog silhouette on the pickup itself would have been unreadable.
+export function powerShrink() {
+  const g = new THREE.Group();
+  const glass = glowMat(0x8affc8);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 11), glass);
+  body.scale.y = 0.86;
+  g.add(body);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.14, 10), glass);
+  neck.position.y = 0.2;
+  g.add(neck);
+  const cork = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.055, 0.08, 10), glowMat(0xc08a5a));
+  cork.position.y = 0.3;
+  g.add(cork);
+  // The liquid inside, sitting low so the bottle reads as half full
+  const brew = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 9), glowMat(0x2fd89a, 0x1faa78));
+  brew.scale.y = 0.66;
+  brew.position.y = -0.05;
+  g.add(brew);
+  // Arrows squeezing inward — the actual verb
+  for (const sx of [-1, 1]) {
+    const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.11, 4), glowMat(0xffffff));
+    arrow.position.set(sx * 0.27, 0, 0);
+    arrow.rotation.z = sx > 0 ? Math.PI / 2 : -Math.PI / 2;
+    g.add(arrow);
+  }
+  return makePowerup(g, 0x8affc8);
+}
+
 export function powerHourglass() {
   const g = new THREE.Group();
   const glass = glowMat(0xbfe6f2);

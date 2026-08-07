@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG, TRAILS } from './config.js';
+import { CONFIG, TRAILS, POWER_AURA } from './config.js';
 import { buildWorld } from './world.js';
 import { THEMES, calibrateHitboxes } from './themes.js';
 import { buildDog } from './dog.js';
@@ -165,6 +165,84 @@ dogCarrier.position.y = R + 0.05;
 dogCarrier.add(dog.group);
 dogPivot.add(dogCarrier);
 scene.add(dogPivot);
+
+// --- power aura ---------------------------------------------------------
+// One glowing ring orbiting the runner per power held, in that power's own
+// colour, growing with the number of stacks. Under the rings model this is not
+// decoration: the stack IS the health bar, so "how many rings am I wearing"
+// has to be answerable at a glance, mid-sprint, without reading the HUD.
+//
+// Parented to the PIVOT, not the carrier. The carrier is what Shrink scales,
+// and a ring that shrank along with the dog would cancel out exactly the
+// feedback Shrink exists to give — you want to see the animal get smaller
+// INSIDE a ring that stayed put. The pivot still carries lane position, so
+// the rings follow the runner sideways as they should.
+const auraGroup = new THREE.Group();
+auraGroup.position.y = R + 0.05;   // same surface offset the carrier uses
+dogPivot.add(auraGroup);
+const auraRings = new Map(); // power type -> mesh
+
+// A solid coloured hoop with the game's dark line behind it, NOT an additive
+// glow. Additive was the obvious choice and the wrong one: light SUMS with
+// whatever it's drawn over, so on the bright green worlds Magnet's red,
+// Golden Bone's gold and Zoomies' orange all converged on the same yellow-
+// white and the four rings became one halo. The colour has to survive on
+// grass, on sand, on snow and on a near-black graveyard, and the thing that
+// already solves exactly that problem everywhere else in this game is the
+// outline. So: opaque colour, dark shell behind it, same as every prop.
+// One solid hoop. The dark outline every prop wears was tried here and had to
+// come out: a shell around a torus sits OUTSIDE the tube it's wrapping, so it
+// enclosed the colour completely and every ring came out charcoal. A ring is
+// already a strong enough shape not to need one — what it needed was to stop
+// being additive, and opaque colour reads cleanly on grass, sand, snow and the
+// graveyard alike.
+function makeAuraRing(color) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.045, 8, 32),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, fog: false })
+  );
+  ring.rotation.x = Math.PI / 2;
+  ring.userData.ring = ring; // so the update path is the same either way
+  return ring;
+}
+
+function updateAura(t) {
+  const powers = game.powers ?? {};
+  // Retire rings for powers that are gone
+  for (const [type, ring] of auraRings) {
+    if (!powers[type]) {
+      auraGroup.remove(ring);
+      ring.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
+      auraRings.delete(type);
+    }
+  }
+  const types = Object.keys(powers).filter((k) => powers[k] > 0);
+  types.forEach((type, i) => {
+    let ring = auraRings.get(type);
+    if (!ring) {
+      ring = makeAuraRing(POWER_AURA[type] ?? 0xffffff);
+      auraGroup.add(ring);
+      auraRings.set(type, ring);
+    }
+    const stacks = game.stacking ? powers[type] : 1;
+    // Separated on BOTH axes — height and radius. Height alone wasn't enough:
+    // the camera looks down about 34 degrees, so flat rings at different
+    // heights project as nearly the same ellipse, and four additive ones
+    // landing on the same pixels summed to white. Nudging each ring outward as
+    // well keeps them as four readable colours instead of one hot halo.
+    ring.position.y = 0.1 + i * 0.26;
+    const spread = 1 + i * 0.3;
+    const scale = spread * (1 + (stacks - 1) * 0.16);
+    ring.scale.set(scale, scale, 1 + (stacks - 1) * 0.4);
+    // A slow tilt-wobble and a pulse tied to stack count: more stacks, more
+    // urgent. Motion is what separates "powered up" from "has a coloured hoop".
+    ring.rotation.z = t * (0.6 + stacks * 0.35) + i;
+    ring.rotation.x = Math.PI / 2 + Math.sin(t * 1.7 + i) * 0.16;
+    // Pulse stays high — these are solid hoops now, not light, so dipping the
+    // opacity far just makes them look like they're fading out.
+    ring.userData.ring.material.opacity = 0.85 + 0.15 * Math.sin(t * (2.2 + stacks) + i * 1.3);
+  });
+}
 
 // The quarry: whatever's being chased, running near the crest (game drives the pivot)
 let squirrel = buildChase(getEquip().chase || 'squirrel');
@@ -426,7 +504,13 @@ function updateHitboxView() {
   if (dogCarrier.userData.hbWire) {
     const w = dogCarrier.userData.hbWire;
     w.visible = on;
-    if (on) sizeHitboxWire(w, CONFIG.dogHitbox.lat, CONFIG.dogHitbox.ang, 1.4);
+    // game.dogHitbox, not CONFIG's — this is the box collision actually uses,
+    // which Shrink makes smaller. parentScale undoes the carrier's own Shrink
+    // scale so the wire doesn't get shrunk twice.
+    if (on) {
+      const hb = game.dogHitbox;
+      sizeHitboxWire(w, hb.lat, hb.ang, 1.4, dogCarrier.scale.x);
+    }
   }
   // Every live entity
   for (const e of game.spawner.entities) {
@@ -494,6 +578,18 @@ function frame(now) {
 
   game.update(dt);
   updateDebugOverlay(dt);
+  // Aura rings + Shrink, both driven off the live power stack
+  updateAura(animNow / 1000);
+  // Shrink scales the MODEL to match the smaller hitbox it grants. Written on
+  // the carrier, not on dog.group — the run cycle owns dog.group's transform
+  // and would overwrite this every frame.
+  const shrinkStacks = game.stacking ? (game.powers?.shrink ?? 0) : 0;
+  const wantScale = Math.max(
+    0.55, 1 - shrinkStacks * CONFIG.powerups.shrinkScale
+  );
+  dogCarrier.scale.setScalar(
+    dogCarrier.scale.x + (wantScale - dogCarrier.scale.x) * Math.min(1, dt * 6)
+  );
   // game.power (singular) hasn't existed since powers became a stacking map,
   // so this was permanently false — the Zoomies gallop boost and its wind
   // streaks have never actually fired for a player.

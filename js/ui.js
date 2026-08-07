@@ -833,21 +833,37 @@ export class UI {
       yarn: 'BALL FRENZY',
       rocket: 'BLAST OFF',
       slowmo: 'SLO-MO',
+      shrink: 'SHRINK',
       scorch: 'SCORCH',
     };
+    const stacking = game.stacking;
     const active = Object.entries(game.powers ?? {})
       .filter(([, t]) => t > 0)
       .sort((a, b) => b[1] - a[1]);
     this.el['hud-power'].classList.toggle('hidden', active.length === 0);
+    // Under stacking the number is a COUNT, not a countdown — "x2" rather than
+    // "9s". Showing seconds there would be a straight lie: nothing is ticking.
     this.el['hud-power'].innerHTML = active
-      .map(([type, t]) =>
-        `<span class="pw">${iconImg(type, 'inline-icon')} ${LABELS[type] ?? type} ${Math.ceil(t)}s</span>`)
+      .map(([type, n]) => {
+        const suffix = stacking ? (n > 1 ? `x${n}` : '') : `${Math.ceil(n)}s`;
+        return `<span class="pw">${iconImg(type, 'inline-icon')} ${LABELS[type] ?? type} ${suffix}</span>`;
+      })
       .join('');
 
+    // THE SHIELD LINE. Under stacking, holding any power at all is a life, and
+    // that has to be stated outright — the rings show you HAVE something, but
+    // not that the something is what's keeping you alive. Banked steaks are
+    // counted alongside, since they're the next life down.
     const lives = game.extraLives ?? 0;
-    this.el['hud-life'].classList.toggle('hidden', lives === 0);
-    this.el['hud-life'].innerHTML = `${iconImg('steak', 'inline-icon')} ` +
-      (lives > 1 ? `x${lives}` : 'EXTRA LIFE');
+    const shielded = stacking && (game.powerCount ?? 0) > 0;
+    this.el['hud-life'].classList.toggle('hidden', lives === 0 && !shielded);
+    this.el['hud-life'].classList.toggle('shielded', shielded);
+    const parts = [];
+    if (shielded) parts.push(`SHIELDED &middot; ${game.powerCount}`);
+    if (lives > 0) {
+      parts.push(`${iconImg('steak', 'inline-icon')} ` + (lives > 1 ? `x${lives}` : 'EXTRA LIFE'));
+    }
+    this.el['hud-life'].innerHTML = parts.join(' &nbsp; ');
   }
 
   showDeath(game) {

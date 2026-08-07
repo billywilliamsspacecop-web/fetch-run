@@ -55,13 +55,52 @@ export const CONFIG = {
   // literally scores faster — and balls add a flat bonus on top.
   pointsPerBall: 25,
 
-  // Powerups: rare pickups granting a timed ability. All of them STACK —
-  // several can run at once, and grabbing the same one again extends it —
-  // so the rarity does the balancing, not mutual exclusion.
+  // ---------------------------------------------------------------------
+  // POWERUPS. Two models, switchable live so they can be played back to back:
+  //
+  // 'stack' (default) — the rings model. Powers have no clock: every one you
+  //   pick up stays until something takes it away, and holding ANY power at
+  //   all is a life. Take a hit with powers up and you lose the whole lot but
+  //   survive; take one with nothing up and the run is over. So the powers are
+  //   the health bar, and a full stack is both stronger and a bigger cushion.
+  //
+  // 'classic' — the original: each power runs on a timer and a hit is a hit.
+  //
+  // THE ONE PLACE 'stack' CANNOT BE LITERAL: three powers work by making a
+  // collision impossible — Zoomies plows through, Blast Off flies over, Ball
+  // Frenzy stops obstacles spawning at all. "Ends when you hit something" can
+  // never fire for those, and Ball Frenzy in particular would mean no obstacle
+  // ever spawns again and the run could not end. So those three are CHARGES:
+  // each obstacle they carry you past (each shape laid down, for Frenzy)
+  // spends one stack. Same rule in spirit — they're used up by obstacles —
+  // and they still can't outlast their own stack count.
   powerups: {
-    chance: 0.055,         // per spawn row (kept low: stacking is strong)
-    duration: 9,           // seconds active (was 7 — most felt too short)
-    maxDuration: 20,       // ceiling when re-grabbing the same power
+    mode: 'stack',         // 'stack' | 'classic'
+
+    // How many of one power you can hold. The cap is what stops a lucky row
+    // from turning into an unloseable run.
+    maxStacks: 3,
+    // Grabbing a power you're already at the cap on isn't wasted: it refunds
+    // this much score instead, so a pickup is never a dead item.
+    cappedPickupBonus: 250,
+    // Grace after a hit strips your powers, so the row that got you can't
+    // immediately get you again before you've seen it.
+    stripInvuln: 1.6,
+
+    // Ceilings, because these compound. Speed especially — he asked for it
+    // not to run away, and score is derived from speed, so a runaway there is
+    // a runaway everywhere.
+    maxSpeedMult: 1.25,    // most a power stack can multiply world speed by
+    maxMult: 8,            // most a power stack can multiply SCORE by
+
+    chance: 0.04,          // per spawn row. Down from 0.055: they persist now,
+                           // so the same rate compounded into a permanent
+                           // everything-at-once. Only trimmed a little, not
+                           // made rare: the frenzy is the point, and holding
+                           // several at once is now the normal state rather
+                           // than a lucky moment. Live on a slider.
+    duration: 9,           // seconds active (classic mode only)
+    maxDuration: 20,       // ceiling when re-grabbing the same power (classic)
     maxExtraLives: 3,      // steaks bank up instead of being one-at-a-time
     magnetLaneDist: 2.6,   // Ball Magnet warp reach, in lanes
     magnetWindow: 0.5,     // pickups inside this travel window get pulled, radians
@@ -86,17 +125,32 @@ export const CONFIG = {
     rocketLift: 1.8,       // how far above the surface the runner rides
     rocketRise: 5,         // per-second lerp rate for take-off and landing
 
-    // Slo-Mo (heaven): the world crawls so you can thread a bad row. It costs
-    // you distance while it runs, which is the balance — safety for score,
-    // no extra tuning needed since score is derived from rotation.
+    // Slo-Mo (heaven): the world crawls so you can thread a bad row. Only
+    // reachable in 'classic' mode now — under stacking it never expires, and
+    // half speed forever cancels out the whole speed curve AND fights Golden
+    // Bone's boost, so the two together just handed back the base speed. Its
+    // slot in the stack model is taken by Shrink (see below).
     slowmoFactor: 0.5,
+
+    // SHRINK — Slo-Mo's replacement. Makes the runner physically smaller, so
+    // its hitbox is smaller, which is the same "thread a bad row" job done in
+    // a way that stacks cleanly and never touches speed.
+    shrinkPerStack: 0.14,  // hitbox shaved per stack
+    shrinkFloor: 0.55,     // ...down to this fraction, never smaller
+    shrinkScale: 0.13,     // how much the MODEL shrinks per stack, visually
 
     // Scorch (hell): obstacles entering your lane burn away before they reach
     // you. Only YOUR lane, so it rewards committing to a line rather than
     // being a second invincibility.
     scorchWindow: 0.42,    // radians ahead of the runner that ignite
     scorchLaneDist: 0.75,  // lane distance counted as "your lane"
+
+    // How much a SECOND and THIRD stack of the same power adds, as a fraction
+    // of the first. Deliberately under 1: three magnets shouldn't be three
+    // times the reach, they should be a clearly better magnet.
+    stackFalloff: 0.45,
   },
+
 
   // Themed levels (see themes.js). A finished world rolls for the next one by
   // rarity tier; how long you stay is this range, scaled down for the rarer
@@ -239,6 +293,27 @@ export const SETTINGS = [
     write: (v) => { CONFIG.rareOnly = v; },
   },
   {
+    key: 'powerupMode', group: 'Powerups', label: 'Rings mode',
+    hint: 'powers never expire and any power is an extra life; off = the original timers',
+    toggle: true,
+    read: () => CONFIG.powerups.mode === 'stack',
+    write: (v) => { CONFIG.powerups.mode = v ? 'stack' : 'classic'; },
+  },
+  {
+    key: 'powerupChance', group: 'Powerups', label: 'Powerup rate',
+    hint: 'chance per row that a powerup drops',
+    min: 0, max: 20, step: 1, suffix: '%',
+    read: () => Math.round(CONFIG.powerups.chance * 100),
+    write: (v) => { CONFIG.powerups.chance = v / 100; },
+  },
+  {
+    key: 'maxStacks', group: 'Powerups', label: 'Max stacks',
+    hint: 'how many of one power you can hold at once',
+    min: 1, max: 6, step: 1, suffix: '',
+    read: () => CONFIG.powerups.maxStacks,
+    write: (v) => { CONFIG.powerups.maxStacks = v; },
+  },
+  {
     key: 'extraDetail', group: 'Worlds', label: 'Extra detail',
     hint: 'outlines and shadows on background scenery — looks richer, costs frame rate',
     toggle: true,
@@ -364,6 +439,24 @@ export const COSMETICS = {
     { id: 'embers', label: 'Embers', price: 400, swatch: '#ff7a2a' },
     { id: 'feathers', label: 'Feathers', price: 400, swatch: '#ffe9a0' },
   ],
+};
+
+// Aura colours, keyed by power type. One ring orbits the runner per power
+// held, sized by how many stacks of it you have, and each colour matches that
+// power's own pickup glow — so the ring on your dog and the item you grabbed
+// are obviously the same thing. Under the stacking model this is the health
+// bar as much as it is decoration, which is why it lives in the palette
+// rather than being invented inside the renderer.
+export const POWER_AURA = {
+  zoomies: 0xff7a3c,
+  goldbone: 0xffd54f,
+  magnet: 0xff5a5a,
+  yarn: 0xe884d8,
+  steak: 0xff8a7a,
+  rocket: 0x9be8ff,
+  shrink: 0x8affc8,
+  slowmo: 0xdff2ff,
+  scorch: 0xff7a2a,
 };
 
 // Paw-trail looks, keyed by COSMETICS.trail id. `up` biases the particles

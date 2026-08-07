@@ -105,6 +105,7 @@ export class Game {
     // Powers STACK: a map of type -> seconds remaining, so several run at
     // once and re-grabbing one extends it (capped at maxDuration).
     this.powers = {};
+    this.powersLost = null;  // what the last hit knocked off, for the FX
     this.extraLives = 0;    // steaks bank up, also stackable
     this.invulnTimer = 0;   // grace after a steak save
     // Themed levels: start in the first theme, move on after 2-4 stages
@@ -280,10 +281,14 @@ export class Game {
     this.planetGroup.rotation.x = this.spin;
 
     // Score multipliers stack multiplicatively: Zoomies AND Golden Bone
-    // together is 4x, which is the payoff for a lucky double pickup.
+    // together is 4x, which is the payoff for a lucky double pickup. Under
+    // stacking, extra copies of Golden Bone keep adding — with falloff, and
+    // under a hard ceiling, or a lucky run stops being a score and becomes a
+    // lottery ticket.
     this.mult = 1;
     if (this.has('zoomies')) this.mult *= 2;
-    if (this.has('goldbone')) this.mult *= 2;
+    if (this.has('goldbone')) this.mult *= 1 + this.stackValue('goldbone');
+    this.mult = Math.min(this.mult, CONFIG.powerups.maxMult);
 
     // Distance is raw metres travelled — never multiplied, so the stage
     // pacing and the "how far did I get" stat stay honest.
@@ -348,16 +353,25 @@ export class Game {
     // long as it runs (score is derived from rotation) — that's the price.
     if (this.has('slowmo')) this.speed *= CONFIG.powerups.slowmoFactor;
     // Golden Bone's 2x comes with a nudge of real speed, so the multiplier is
-    // something you feel rather than just a number in the corner.
-    if (this.has('goldbone')) this.speed *= CONFIG.powerups.goldboneSpeedBump;
+    // something you feel rather than just a number in the corner. Capped:
+    // powers persist under stacking, so without a ceiling a long clean run
+    // compounds this into a speed no one can read a row at.
+    if (this.has('goldbone')) {
+      const boost = Math.pow(CONFIG.powerups.goldboneSpeedBump, 1 + this.stackValue('goldbone'));
+      this.speed *= Math.min(CONFIG.powerups.maxSpeedMult, boost);
+    }
     // Recorded after the powerup modifiers, so a Golden Bone sprint counts
     // toward your fastest-ever — it's speed you actually travelled at.
     this.topSpeed = Math.max(this.topSpeed, this.speed);
 
-    // Powerup timers — each stacked power counts down independently
-    for (const type of Object.keys(this.powers)) {
-      this.powers[type] -= dt;
-      if (this.powers[type] <= 0) delete this.powers[type];
+    // Powerup timers. Under STACKING there are none: a power is a count of
+    // stacks, not a number of seconds, and it lasts until an obstacle takes
+    // it off you. Classic mode counts each one down independently.
+    if (!this.stacking) {
+      for (const type of Object.keys(this.powers)) {
+        this.powers[type] -= dt;
+        if (this.powers[type] <= 0) delete this.powers[type];
+      }
     }
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
 
@@ -376,7 +390,11 @@ export class Game {
       if (this.has('yarn')) {
         // Wait out the whole figure before laying down the next one, or the
         // shapes overlap into an unreadable soup of balls.
+        // Each shape costs a stack of Frenzy. It is the one power that stops
+        // obstacles spawning entirely, so nothing else can ever end it — left
+        // uncharged under stacking the run would simply never be losable.
         const span = this.spawner.spawnBallRow(this.spin);
+        this._spendCharge('yarn');
         this.spawnTimer = span / Math.max(0.2, this.speed) + 0.25;
       } else {
         this.spawner.spawnRow(this.spin, this.speed);
@@ -406,7 +424,7 @@ export class Game {
         laneDist < CONFIG.powerups.yarnMagnetLaneDist;
       if ((e.isBall || e.isPower) && (magnet || frenzyPull) && !e.collected &&
           Math.abs(cur) < CONFIG.powerups.magnetWindow &&
-          (magnet ? laneDist < CONFIG.powerups.magnetLaneDist : true)) {
+          (magnet ? laneDist < CONFIG.powerups.magnetLaneDist * this.stackValue('magnet') : true)) {
         const rate = magnet ? CONFIG.powerups.magnetPull : CONFIG.powerups.yarnMagnetPull;
         const pull = Math.min(1, rate * dt);
         e.theta0 += (dogT - this.spin - e.theta0) * pull;
@@ -472,6 +490,18 @@ export class Game {
               CONFIG.powerups.maxExtraLives, this.extraLives + 1
             );
             this.sfx?.extraLife();
+          } else if (this.stacking) {
+            // One more stack, up to the cap. At the cap the pickup pays out
+            // score instead of being swallowed — grabbing something and
+            // getting visibly nothing reads as a bug, not as a ceiling.
+            const held = this.powers[e.ptype] ?? 0;
+            if (held >= CONFIG.powerups.maxStacks) {
+              this.score += CONFIG.powerups.cappedPickupBonus * this.mult;
+              this.sfx?.collect(3);
+            } else {
+              this.powers[e.ptype] = held + 1;
+              this.sfx?.powerup();
+            }
           } else {
             // Stacks: adds to whatever is already running, up to a ceiling
             // Ball Frenzy runs longer than the rest — it's a breather, and a
@@ -495,7 +525,7 @@ export class Game {
         // here. Checked ahead of the collision test so a hit can never land
         // on something that should already be ash.
         if (this.has('scorch') && !e.collected &&
-            cur < 0 && cur > -CONFIG.powerups.scorchWindow &&
+            cur < 0 && cur > -CONFIG.powerups.scorchWindow * this.stackValue('scorch') &&
             laneDist < CONFIG.powerups.scorchLaneDist) {
           e.collected = true;
           e.group.getWorldPosition(_v);
@@ -503,8 +533,12 @@ export class Game {
           this.spawner.remove(e);
           continue;
         }
-        const hitLat = e.hitbox.lat + CONFIG.dogHitbox.lat;
-        const hitAng = e.hitbox.ang + CONFIG.dogHitbox.ang;
+        // this.dogHitbox, not CONFIG.dogHitbox — Shrink makes the runner's
+        // own half of the test smaller. The obstacle's measured box is
+        // untouched; only the half the player controls moves.
+        const box = this.dogHitbox;
+        const hitLat = e.hitbox.lat + box.lat;
+        const hitAng = e.hitbox.ang + box.ang;
         if (swept(prev, cur, hitAng) && laneDist < hitLat) {
           this.lastHitKind = e.kind; // picks the wipeout animation
           if (!this._survivesHit(e)) return;
@@ -522,11 +556,58 @@ export class Game {
     this.ui.updateHUD(this);
   }
 
-  // Returns true if the runner survives contact (zoomies / steak / grace).
-  // On true death, calls _die and returns false.
-  // Is a stacking power currently active?
+  // Is a power currently active? True in either model — under stacking the
+  // stored number is a stack count, under classic it's seconds remaining.
   has(type) {
     return (this.powers[type] ?? 0) > 0;
+  }
+
+  // The rings model, read live so the settings toggle takes effect mid-run.
+  get stacking() {
+    return CONFIG.powerups.mode === 'stack';
+  }
+
+  // How many copies of a power are held. Classic mode has no such notion —
+  // one timer is one power — so it always answers 1 while the power runs.
+  stacks(type) {
+    if (!this.powers[type]) return 0;
+    return this.stacking ? this.powers[type] : 1;
+  }
+
+  // What those stacks are WORTH, as a multiple of a single stack. Extra copies
+  // pay less than the first (stackFalloff) so three of something is a clearly
+  // better version of it rather than three times the thing.
+  stackValue(type) {
+    const n = this.stacks(type);
+    if (n <= 0) return 0;
+    return 1 + (n - 1) * CONFIG.powerups.stackFalloff;
+  }
+
+  // Total powers held — the "how many lives is this worth" number, and what
+  // the aura rings and the HUD both read.
+  get powerCount() {
+    return Object.values(this.powers).reduce((a, n) => a + (n > 0 ? 1 : 0), 0);
+  }
+
+  // Spend one stack of a CHARGE power (Zoomies, Blast Off, Ball Frenzy). These
+  // three can never be ended by a hit — they exist to stop hits happening — so
+  // the obstacle they carry you past is what uses them up instead.
+  _spendCharge(type) {
+    if (!this.stacking || !this.powers[type]) return;
+    this.powers[type] -= 1;
+    if (this.powers[type] <= 0) delete this.powers[type];
+    this.ui.updateHUD(this);
+  }
+
+  // The runner's hitbox after Shrink. Measured props aren't touched — only the
+  // dog gets smaller, which is the half of the collision the player controls.
+  get dogHitbox() {
+    const n = this.stacks('shrink');
+    if (n <= 0) return CONFIG.dogHitbox;
+    const k = Math.max(
+      CONFIG.powerups.shrinkFloor, 1 - n * CONFIG.powerups.shrinkPerStack
+    );
+    return { lat: CONFIG.dogHitbox.lat * k, ang: CONFIG.dogHitbox.ang * k };
   }
 
   // Commit to a world: swap props, colors and scenery, and announce it.
@@ -560,17 +641,45 @@ export class Game {
     this._enterTheme(t);
   }
 
+  // The order here IS the design. Powers that stop the collision happening
+  // get to act first and spend themselves doing it; only once none of those
+  // are left does the stack itself get cashed in as a life.
   _survivesHit(e) {
     if (CONFIG.invincible) return true;   // dev toggle
     if (this.invulnTimer > 0) return true;
     // Blast Off: you're airborne, so the obstacle simply isn't in your way.
     // No crash FX and the prop is left standing — you fly over it.
-    if (this.has('rocket')) return true;
+    if (this.has('rocket')) {
+      this._spendCharge('rocket');
+      return true;
+    }
     if (this.has('zoomies')) {
       // Invincible: plow straight through
       e.group.getWorldPosition(_v);
       this.fx?.crash(_v);
       this.spawner.remove(e);
+      this._spendCharge('zoomies');
+      return true;
+    }
+    // THE RINGS RULE. Holding anything at all is a life: the hit lands, every
+    // power you were carrying comes off at once, and you keep running. Get hit
+    // again before you've picked anything back up and that one is fatal.
+    //
+    // Deliberately ahead of the banked steak lives: powers are the thing you
+    // can see orbiting you and the thing you just spent the last ten seconds
+    // collecting, so they're what a player expects to lose first. A steak is a
+    // deeper reserve, and it should outlast the frenzy rather than be quietly
+    // eaten before it.
+    if (this.stacking && this.powerCount > 0) {
+      this.powersLost = { ...this.powers };  // read by the FX + HUD flash
+      this.powers = {};
+      this.invulnTimer = CONFIG.powerups.stripInvuln;
+      this.sfx?.save();
+      this.dogPivot.children[0]?.getWorldPosition(_v);
+      this.fx?.crash(_v);
+      this.fx?.powerBurst?.(_v, this.powersLost);
+      this.spawner.remove(e);
+      this.ui.updateHUD(this);
       return true;
     }
     if (this.extraLives > 0) {

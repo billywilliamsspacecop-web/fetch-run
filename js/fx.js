@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG, TRAILS } from './config.js';
+import { CONFIG, TRAILS, POWER_AURA } from './config.js';
 
 // Tiny pooled particle system: dust, bursts, wind streaks, tumbling planks.
 export class FX {
@@ -119,6 +119,25 @@ export class FX {
         }
       }
     }
+  }
+
+  // The rings model's signature moment: a hit knocks every power off you at
+  // once. Each one bursts outward in its OWN colour, so what you lost is
+  // legible in the half second before it's gone — the same read as scattering
+  // rings, and the reason the hit registers as "I lost my stack" rather than
+  // as an unexplained flash.
+  powerBurst(pos, lost = {}) {
+    const colors = Object.keys(lost)
+      .map((type) => POWER_AURA[type])
+      .filter(Boolean);
+    if (!colors.length) return;
+    for (const color of colors) {
+      this._spawn(pos, {
+        color, count: 9, speed: 3.6, up: 3.2, life: 0.85, size: 0.9,
+        gravity: 3.5, outline: CONFIG.extraDetail ? 0.14 : 0,
+      });
+    }
+    this._spawn(pos, { color: 0xffffff, count: 8, speed: 2.2, up: 2.4, life: 0.4, size: 0.8 });
   }
 
   // Blast Off exhaust — fired downward from the airborne runner

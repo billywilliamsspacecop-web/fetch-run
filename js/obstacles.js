@@ -13,19 +13,26 @@ const POWERUPS = [
   // The themed three sit a notch below the staples: they're stronger, and
   // they should still feel like a find when one turns up.
   { type: 'rocket', make: P.powerRocket, weight: 10 },
-  { type: 'slowmo', make: P.powerHourglass, weight: 10 },
   { type: 'scorch', make: P.powerFlame, weight: 10 },
   { type: 'steak', make: P.powerSteak, weight: 5 },
+  // Slo-Mo and Shrink share a slot — they do the same job (survive a row you
+  // can't dodge) and only one of them makes sense per model. Slo-Mo has no
+  // expiry to save it under stacking, so half speed would be permanent and
+  // would cancel the speed curve outright; Shrink shrinks you instead.
+  { type: 'shrink', make: P.powerShrink, weight: 10, modes: ['stack'] },
+  { type: 'slowmo', make: P.powerHourglass, weight: 10, modes: ['classic'] },
 ];
-const TOTAL_WEIGHT = POWERUPS.reduce((a, p) => a + p.weight, 0);
 
 function pickPowerup() {
-  let roll = Math.random() * TOTAL_WEIGHT;
-  for (const p of POWERUPS) {
+  const mode = CONFIG.powerups.mode;
+  const pool = POWERUPS.filter((p) => !p.modes || p.modes.includes(mode));
+  const total = pool.reduce((a, p) => a + p.weight, 0);
+  let roll = Math.random() * total;
+  for (const p of pool) {
     roll -= p.weight;
     if (roll <= 0) return p;
   }
-  return POWERUPS[0];
+  return pool[0];
 }
 
 // Manages spawned entities on the globe. Each entry:
