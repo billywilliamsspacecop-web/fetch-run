@@ -845,7 +845,13 @@ export class UI {
     // "9s". Showing seconds there would be a straight lie: nothing is ticking.
     this.el['hud-power'].innerHTML = active
       .map(([type, n]) => {
-        const suffix = stacking ? (n > 1 ? `x${n}` : '') : `${Math.ceil(n)}s`;
+        // Blast Off is the one power with a clock under stacking, so it shows
+        // both: how many flights are banked, and how long this one has left.
+        let suffix;
+        if (!stacking) suffix = `${Math.ceil(n)}s`;
+        else if (type === 'rocket') {
+          suffix = `${n > 1 ? `x${n} ` : ''}${Math.ceil(game.rocketTimer ?? 0)}s`;
+        } else suffix = n > 1 ? `x${n}` : '';
         return `<span class="pw">${iconImg(type, 'inline-icon')} ${LABELS[type] ?? type} ${suffix}</span>`;
       })
       .join('');

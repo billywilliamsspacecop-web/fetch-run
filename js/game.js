@@ -106,6 +106,8 @@ export class Game {
     // once and re-grabbing one extends it (capped at maxDuration).
     this.powers = {};
     this.powersLost = null;  // what the last hit knocked off, for the FX
+    this.rocketTimer = 0;    // Blast Off's clock (stacking model only)
+    this.staggerTimer = 0;   // post-strip speed dip
     this.extraLives = 0;    // steaks bank up, also stackable
     this.invulnTimer = 0;   // grace after a steak save
     // Themed levels: start in the first theme, move on after 2-4 stages
@@ -357,22 +359,44 @@ export class Game {
     // powers persist under stacking, so without a ceiling a long clean run
     // compounds this into a speed no one can read a row at.
     if (this.has('goldbone')) {
+      // Compounding per stack, so a second bone is a second helping of speed
+      // rather than a rounding error. The cap is what holds it in.
       const boost = Math.pow(CONFIG.powerups.goldboneSpeedBump, 1 + this.stackValue('goldbone'));
       this.speed *= Math.min(CONFIG.powerups.maxSpeedMult, boost);
+    }
+    // The stagger from losing a stack: a hard dip that winds back up. Applied
+    // last so it drags whatever the powers just did to your speed, and so a
+    // fast run gets a proportionally bigger jolt out of it.
+    if (this.staggerTimer > 0) {
+      const back = 1 - this.staggerTimer / CONFIG.powerups.stripRecover;
+      this.speed *= CONFIG.powerups.stripSlow + (1 - CONFIG.powerups.stripSlow) * back;
     }
     // Recorded after the powerup modifiers, so a Golden Bone sprint counts
     // toward your fastest-ever — it's speed you actually travelled at.
     this.topSpeed = Math.max(this.topSpeed, this.speed);
 
-    // Powerup timers. Under STACKING there are none: a power is a count of
-    // stacks, not a number of seconds, and it lasts until an obstacle takes
-    // it off you. Classic mode counts each one down independently.
-    if (!this.stacking) {
+    // Powerup timers. Under STACKING almost nothing has a clock: a power is a
+    // count of stacks and it lasts until an obstacle takes it off you. The
+    // exception is Blast Off — see rocketSecondsPerStack. Classic mode counts
+    // every power down independently.
+    if (this.stacking) {
+      if (this.powers.rocket) {
+        this.rocketTimer -= dt;
+        if (this.rocketTimer <= 0) {
+          // One stack burns out; if more are banked, the next one lights.
+          this.powers.rocket -= 1;
+          if (this.powers.rocket <= 0) delete this.powers.rocket;
+          else this.rocketTimer = CONFIG.powerups.rocketSecondsPerStack;
+          this.ui.updateHUD(this);
+        }
+      }
+    } else {
       for (const type of Object.keys(this.powers)) {
         this.powers[type] -= dt;
         if (this.powers[type] <= 0) delete this.powers[type];
       }
     }
+    if (this.staggerTimer > 0) this.staggerTimer -= dt;
     if (this.invulnTimer > 0) this.invulnTimer -= dt;
 
     // Runner lane tween
@@ -500,6 +524,11 @@ export class Game {
               this.sfx?.collect(3);
             } else {
               this.powers[e.ptype] = held + 1;
+              // First rocket lights the clock; later ones just bank another
+              // burn, so three of them is three flights, not one long one.
+              if (e.ptype === 'rocket' && held === 0) {
+                this.rocketTimer = CONFIG.powerups.rocketSecondsPerStack;
+              }
               this.sfx?.powerup();
             }
           } else {
@@ -649,10 +678,11 @@ export class Game {
     if (this.invulnTimer > 0) return true;
     // Blast Off: you're airborne, so the obstacle simply isn't in your way.
     // No crash FX and the prop is left standing — you fly over it.
-    if (this.has('rocket')) {
-      this._spendCharge('rocket');
-      return true;
-    }
+    // Blast Off doesn't spend a charge — it runs on a clock (see the timer in
+    // _updateRun). Flying is total safety with nothing to spend it against, so
+    // charging it by obstacles avoided just meant a sparse stretch of track
+    // bought you most of a world in the air.
+    if (this.has('rocket')) return true;
     if (this.has('zoomies')) {
       // Invincible: plow straight through
       e.group.getWorldPosition(_v);
@@ -673,7 +703,9 @@ export class Game {
     if (this.stacking && this.powerCount > 0) {
       this.powersLost = { ...this.powers };  // read by the FX + HUD flash
       this.powers = {};
+      this.rocketTimer = 0;
       this.invulnTimer = CONFIG.powerups.stripInvuln;
+      this.staggerTimer = CONFIG.powerups.stripRecover;
       this.sfx?.save();
       this.dogPivot.children[0]?.getWorldPosition(_v);
       this.fx?.crash(_v);

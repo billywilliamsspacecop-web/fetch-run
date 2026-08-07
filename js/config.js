@@ -86,12 +86,23 @@ export const CONFIG = {
     // Grace after a hit strips your powers, so the row that got you can't
     // immediately get you again before you've seen it.
     stripInvuln: 1.6,
+    // ...and the hit has to COST something you can feel, or losing a full
+    // stack reads as nothing happening. The runner drops to a stagger and
+    // winds back up over about a second: you keep running (stopping dead
+    // would be a second punishment on top of the one you just took), but the
+    // moment lands. Note the lost powers are NOT dropped as pickups — being
+    // able to scoop your own stack back up would mean never dying.
+    stripSlow: 0.45,       // speed multiplier at the instant of the hit
+    stripRecover: 1.1,     // seconds to wind back up to full
 
-    // Ceilings, because these compound. Speed especially — he asked for it
-    // not to run away, and score is derived from speed, so a runaway there is
-    // a runaway everywhere.
-    maxSpeedMult: 1.25,    // most a power stack can multiply world speed by
-    maxMult: 8,            // most a power stack can multiply SCORE by
+    // Ceilings. These still exist, but they were set far too tight on the
+    // first pass: with falloff on top of them, a second Golden Bone was worth
+    // about a tenth of the first and a third was worth nothing at all, so
+    // stacking a power you already had felt like picking up litter. The point
+    // of the model is that a stack is POWERFUL. The caps are now high enough
+    // that you reach them by actually filling a stack, not by holding two.
+    maxSpeedMult: 1.6,     // most a power stack can multiply world speed by
+    maxMult: 12,           // most a power stack can multiply SCORE by
 
     chance: 0.04,          // per spawn row. Down from 0.055: they persist now,
                            // so the same rate compounded into a permanent
@@ -124,6 +135,12 @@ export const CONFIG = {
     // reads as "closer", and past ~2 the runner starts filling the screen.
     rocketLift: 1.8,       // how far above the surface the runner rides
     rocketRise: 5,         // per-second lerp rate for take-off and landing
+    // Blast Off is the one power that gets a CLOCK under stacking. Flying is
+    // total safety with nothing to spend it against, so as a charge it lasted
+    // as long as the obstacles happened to take to arrive — which on a sparse
+    // stretch was most of a world. Seconds PER STACK: one bottle is a short
+    // hop, three is a long flight, and none of them is the whole run.
+    rocketSecondsPerStack: 4.5,
 
     // Slo-Mo (heaven): the world crawls so you can thread a bad row. Only
     // reachable in 'classic' mode now — under stacking it never expires, and
@@ -135,9 +152,12 @@ export const CONFIG = {
     // SHRINK — Slo-Mo's replacement. Makes the runner physically smaller, so
     // its hitbox is smaller, which is the same "thread a bad row" job done in
     // a way that stacks cleanly and never touches speed.
-    shrinkPerStack: 0.14,  // hitbox shaved per stack
-    shrinkFloor: 0.55,     // ...down to this fraction, never smaller
-    shrinkScale: 0.13,     // how much the MODEL shrinks per stack, visually
+    // Deepened so a second and third bottle are obviously smaller rather than
+    // technically smaller: three stacks now takes the runner to roughly a
+    // third of its box instead of a little over half.
+    shrinkPerStack: 0.22,  // hitbox shaved per stack
+    shrinkFloor: 0.34,     // ...down to this fraction, never smaller
+    shrinkScale: 0.18,     // how much the MODEL shrinks per stack, visually
 
     // Scorch (hell): obstacles entering your lane burn away before they reach
     // you. Only YOUR lane, so it rewards committing to a line rather than
@@ -146,9 +166,16 @@ export const CONFIG = {
     scorchLaneDist: 0.75,  // lane distance counted as "your lane"
 
     // How much a SECOND and THIRD stack of the same power adds, as a fraction
-    // of the first. Deliberately under 1: three magnets shouldn't be three
-    // times the reach, they should be a clearly better magnet.
-    stackFalloff: 0.45,
+    // of the first. 1 = a full second helping, i.e. two magnets really is
+    // twice the magnet and three is three times.
+    //
+    // Was 0.45, and that was the wrong instinct: diminishing returns are what
+    // you reach for when a power is permanent and free, but here every stack
+    // is paid for with a pickup AND every stack is lost together on one hit.
+    // The stack is the risk, so it should also be the reward. Ceilings above
+    // do the balancing instead — a hard cap you can feel yourself climbing
+    // toward reads far better than a soft curve that quietly eats your pickup.
+    stackFalloff: 1,
   },
 
 
