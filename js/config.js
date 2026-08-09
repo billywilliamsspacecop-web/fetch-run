@@ -11,17 +11,20 @@ export const CONFIG = {
 
   // Speed in radians of planet rotation per second.
   // Stage system: every stageLength meters is a checkpoint; speed steps up.
-  baseSpeed: 0.44,         // fast out of the gate (doubled per playtest 4)
+  // Raised from 108 mph per playtest 7 — that felt sluggish out of the gate
+  // on a run that's meant to open fast.
+  baseSpeed: 0.6096,       // ~150 mph
   // Lengthened with the speed increase: at 500m a top-speed stage lasted
   // barely 4 seconds, so checkpoints and worlds blurred past.
   stageLength: 900,        // meters per stage/checkpoint
-  // Ceiling raised after Bryce cruised the old cap (0.8 == 197mph) for 100
-  // stages. Reaction time is bounded by the horizon, not the spawn distance,
-  // so spawnAheadAngle goes up alongside it — otherwise props pop into view
-  // too late to react rather than merely arriving faster.
-  // Keeps climbing well into a long run rather than pinning early: with
-  // 900m stages you hit the ceiling around stage 18, not stage 12.
-  stageSpeedBump: 0.05,    // speed added at each checkpoint
+  // Ceiling PULLED IN from 504 mph per playtest 7: the old base/ramp meant
+  // 30+ stages to reach top speed, which is most of a run spent below the
+  // speed the game is actually tuned to feel exciting at. A closer ceiling
+  // and a steeper ramp get there in well under half that.
+  // Reaction time is bounded by the horizon, not the spawn distance, so
+  // spawnAheadAngle goes up alongside a higher ceiling — otherwise props pop
+  // into view too late to react rather than merely arriving faster.
+  stageSpeedBump: 0.0732,  // ~18 mph added at each checkpoint
   // Pulled back from 3.9 (~960mph) after playtest 6: past roughly 500mph the
   // run stops being a game of reading rows and becomes a coin flip, because
   // the horizon — not the spawn distance — bounds reaction time and no amount
@@ -30,7 +33,7 @@ export const CONFIG = {
   // Note collision is a SWEPT test (see `swept` in game.js) — at these speeds
   // an entity crosses the whole hit window inside a single frame, and the old
   // point test missed it entirely.
-  maxSpeed: 2.05,          // ~504 mph
+  maxSpeed: 1.8288,        // ~450 mph
   // Spawn density ramps against THIS, not maxSpeed. Tying it to maxSpeed
   // meant tripling the ceiling silently halved mid-game density, because the
   // same speed now sat far lower on the 0..1 ramp. Anchored here, everything
@@ -104,12 +107,12 @@ export const CONFIG = {
     maxSpeedMult: 1.6,     // most a power stack can multiply world speed by
     maxMult: 12,           // most a power stack can multiply SCORE by
 
-    chance: 0.04,          // per spawn row. Down from 0.055: they persist now,
-                           // so the same rate compounded into a permanent
-                           // everything-at-once. Only trimmed a little, not
-                           // made rare: the frenzy is the point, and holding
-                           // several at once is now the normal state rather
-                           // than a lucky moment. Live on a slider.
+    // 0.04 measured out at ONE powerup roughly every 30 seconds of real
+    // play (averaged over headless trials) — easy to go a whole short
+    // session without seeing one, which is exactly what got reported.
+    // Raised to land around one every 8-9 seconds instead: noticeably a
+    // frenzy, not a formality. Live on a slider either way.
+    chance: 0.12,          // per spawn row
     duration: 9,           // seconds active (classic mode only)
     maxDuration: 20,       // ceiling when re-grabbing the same power (classic)
     maxExtraLives: 3,      // steaks bank up instead of being one-at-a-time
