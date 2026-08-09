@@ -509,17 +509,20 @@ export class Game {
       } else if (e.isPower) {
         if (!e.collected && swept(prev, cur, CONFIG.collectWindowAngle) && laneDist < 0.6) {
           e.collected = true;
-          if (e.ptype === 'steak') {
-            this.extraLives = Math.min(
-              CONFIG.powerups.maxExtraLives, this.extraLives + 1
-            );
-            this.sfx?.extraLife();
-          } else if (this.stacking) {
-            // One more stack, up to the cap. At the cap the pickup pays out
-            // score instead of being swallowed — grabbing something and
-            // getting visibly nothing reads as a bug, not as a ceiling.
+          if (this.stacking) {
+            // THE LIFE CYCLE, exactly: 0 powers held -> a hit kills; 1+ powers
+            // held -> a hit strips the lot and you keep running. Steak used to
+            // skip this pool entirely and bank a separate extraLives counter,
+            // which meant a run holding only banked steaks and zero powers
+            // still survived a hit — a silent third state that broke the rule.
+            // Steak is just another stack now, and it was always "an extra
+            // life" in spirit, so folding it into the pool that IS your extra
+            // life costs it nothing.
             const held = this.powers[e.ptype] ?? 0;
             if (held >= CONFIG.powerups.maxStacks) {
+              // At the cap the pickup pays out score instead of being
+              // swallowed — grabbing something and getting visibly nothing
+              // reads as a bug, not as a ceiling.
               this.score += CONFIG.powerups.cappedPickupBonus * this.mult;
               this.sfx?.collect(3);
             } else {
@@ -529,8 +532,14 @@ export class Game {
               if (e.ptype === 'rocket' && held === 0) {
                 this.rocketTimer = CONFIG.powerups.rocketSecondsPerStack;
               }
-              this.sfx?.powerup();
+              this.sfx?.[e.ptype === 'steak' ? 'extraLife' : 'powerup']();
             }
+          } else if (e.ptype === 'steak') {
+            // Classic mode: steak keeps its original standalone-life behavior.
+            this.extraLives = Math.min(
+              CONFIG.powerups.maxExtraLives, this.extraLives + 1
+            );
+            this.sfx?.extraLife();
           } else {
             // Stacks: adds to whatever is already running, up to a ceiling
             // Ball Frenzy runs longer than the rest — it's a breather, and a

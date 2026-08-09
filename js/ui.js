@@ -835,6 +835,9 @@ export class UI {
       slowmo: 'SLO-MO',
       shrink: 'SHRINK',
       scorch: 'SCORCH',
+      // Only ever appears here in stacking mode — steak banks a standalone
+      // extraLife in classic mode instead and never touches this.powers there.
+      steak: 'STEAK',
     };
     const stacking = game.stacking;
     const active = Object.entries(game.powers ?? {})
